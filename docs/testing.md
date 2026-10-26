@@ -77,6 +77,9 @@ and the MCP server over real HTTP as an agent would use it), `fileActions` (the 
 Move to Trash…, through their sheets), `editorZed` (the editor as Zed's: zoom, tabs,
 tree-sitter, editing commands, pickers, vim, and a language server —
 `Tests/OvertermTests/Fixtures/fake-lsp.py`, through `LanguageServers.discoveryOverride`).
+`notes` (the Notes page: a vault in the isolated support folder, iCloud played
+by `SimulatedCloudFiles` — a note only in iCloud downloaded before it opens, one
+changed elsewhere reloading, the page taking turns with Settings, its session).
 `terminal` also checks the bundle: its version is the `VERSION` next to
 `Overterm.app` (the run's app is the checkout's), the build a positive
 integer, the commit named — and that About Overterm shows them, opened

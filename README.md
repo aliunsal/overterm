@@ -117,6 +117,16 @@ checkout, or the one the tab's dev server publishes, and imports Postman,
 `.http` files and a cURL command too. Agents get it over MCP: list the
 requests, send one with its tests, run the collection.
 
+### Notes, synced through iCloud Drive
+
+<kbd>⌥⌘N</kbd>: Markdown notes in a page of their own beside the tabs — the
+vault's tree, the note, and the note rendered next to it. A vault is a plain
+folder; "Overterm Notes" in iCloud Drive reaches your other Macs and your
+iPhone's Files app, with no account of ours in between. Obsidian's syntax
+(`[[links]]`, `#tags`, frontmatter), not its app: the notes stay plain files.
+A note changed on another device reloads here; one still in iCloud is
+downloaded before it opens.
+
 ### And the work around the work
 
 **New Task** (⇧⌘N) makes a worktree, a branch and a tab with an agent started
@@ -181,6 +191,7 @@ The defaults; every one of them is rebindable in Settings ▸ Keyboard Shortcuts
 | ⌘L | Ask an agent about the selection |
 | ⌘F | Search the terminal and the files |
 | ⌘B / ⌥⌘D | Sidebar / changes |
+| ⌥⌘N / ⌘N | Notes / a new note, while they show |
 | ⇧⌘E | Tab Peek (or three fingers down) |
 | ⌘, / ⌥⌘O | Settings / what's new |
 | ⌘-click | Open a printed `path:line` in the editor |

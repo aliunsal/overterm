@@ -54,6 +54,7 @@ final class E2ERunner {
         "openFromFinder": { await $0.openFromFinderScenario() },
         "sessions": { await $0.sessionsScenario() },
         "settings": { await $0.settingsScenario() },
+        "notes": { await $0.notesScenario() },
         "themes": { await $0.themesScenario() },
         "usage": { await $0.usageScenario() },
         "updates": { await $0.updatesScenario() },
@@ -3776,6 +3777,112 @@ final class E2ERunner {
         settings.set("appearance.themeLight", nil)
         settings.set("appearance.theme", nil)
         check("and unset leaves your own Ghostty config in charge", await eventually(3) { !overrides().contains("theme") }, overrides())
+    }
+
+    /// Notes (⌥⌘N): a page over the body that takes turns with Settings, a
+    /// vault in the isolated support folder (iCloud played by
+    /// SimulatedCloudFiles — nothing here touches iCloud), its tree, its
+    /// editor and the preview beside it, a note written from elsewhere
+    /// reloading, one only in iCloud downloaded before it opens, and the
+    /// page in the session.
+    private func notesScenario() async {
+        let cloud = SimulatedCloudFiles(latency: 0.6)
+        app.notesWorkspace.files = cloud
+        let tab = app.store.selected
+
+        app.toggleNotes(nil)
+        guard let notes = app.notes else { return check("⌥⌘N makes the Notes page", false) }
+        check("⌥⌘N shows the Notes page", app.store.showingOverlay == .notes && notes.view.isHidden == false)
+        check("…in the strip, the terminal tab still selected under it", app.store.openOverlays == [.notes] && app.store.selectedID == tab?.id)
+        check("with no vault it offers to make one", app.notesWorkspace.vault == nil)
+
+        do {
+            try app.notesWorkspace.createDefaultVault()
+        } catch {
+            return check("the vault is made", false, "\(error)")
+        }
+        guard let root = app.notesWorkspace.root else { return check("a vault", false) }
+        check(
+            "the vault is the isolated run's own folder", root.standardizedFileURL == AppEnvironment.supportDirectory.appendingPathComponent("Notes").standardizedFileURL,
+            root.path)
+
+        // Written from elsewhere — another device, an agent.
+        func write(_ name: String, _ text: String) { try? Data(text.utf8).write(to: root.appendingPathComponent(name), options: .atomic) }
+        write("Inbox.md", "# Inbox\n\nSee [[Plan]]. #todo\n")
+        write("Plan.md", "# Plan\n")
+        try? FileManager.default.createDirectory(at: root.appendingPathComponent(".overterm"), withIntermediateDirectories: true)
+        write(".overterm/notes.json", "{}")
+        guard let index = app.notesWorkspace.index else { return check("an index", false) }
+        check("the index finds the notes", await eventually(5) { index.notes.count == 2 }, "\(index.notes.map(\.path))")
+        check("…and the backlink", await eventually(3) { index.backlinks(to: "Plan.md").map(\.source) == ["Inbox.md"] })
+        app.notesWorkspace.tree.reload()
+        let rows = app.notesWorkspace.tree.rows.map(\.entry.name)
+        check("the tree lists the notes and not the vault's settings", rows.contains("Inbox.md") && !rows.contains(".overterm"), "\(rows)")
+
+        // A note in the editor, rendered beside it.
+        notes.open("Inbox.md")
+        let editor = notes.editor
+        check("a note opens in the page's editor", await eventually(3) { editor.active?.url?.lastPathComponent == "Inbox.md" })
+        check("…not the window's editor pane", app.editor?.active == nil)
+        check("…and renders beside it", await eventually(3) { notes.preview.renderedText.string.contains("Inbox") }, notes.preview.renderedText.string)
+        editor.textView.setSelectedRange(NSRange(location: (editor.textView.string as NSString).length, length: 0))
+        editor.textView.insertText("More text\n", replacementRange: editor.textView.selectedRange())
+        check("the preview follows typing", await eventually(3) { notes.preview.renderedText.string.contains("More text") })
+        check("an unsaved note keeps the window (its edits are asked about)", app.unsavedEditorNames.contains("Inbox.md"), "\(app.unsavedEditorNames)")
+        editor.saveDocument(nil)
+        let saved = (try? String(contentsOf: root.appendingPathComponent("Inbox.md"), encoding: .utf8)) ?? ""
+        check("⌘S writes it", saved.contains("More text"), saved)
+        check("…and the index has it at once", index.entries["Inbox.md"]?.text?.contains("More text") == true)
+        if let png = ProcessInfo.processInfo.environment["OVERTERM_DUMP_PNG"] {
+            await pause(0.8)
+            app.captureWindow(to: png)
+        }
+
+        // Changed elsewhere while open, no edits here: it reloads.
+        write("Inbox.md", "# Inbox\n\nRewritten on the iPhone, longer than before.\n")
+        check(
+            "a note changed elsewhere reloads", await eventually(5) { editor.textView.string.contains("Rewritten on the iPhone") },
+            editor.textView.string)
+
+        // Only in iCloud: downloaded, then opened.
+        write("Cloud.md", "# Cloud\n")
+        cloud.putInCloud(root.appendingPathComponent("Cloud.md"))
+        notes.open("Cloud.md")
+        check("a note only in iCloud says it is downloading", notes.downloadLabel.isHidden == false && notes.downloading == "Cloud.md")
+        check("…and opens once it is down", await eventually(5) { editor.active?.url?.lastPathComponent == "Cloud.md" })
+        check("…its read never on the main thread's account", editor.textView.string.contains("# Cloud"))
+
+        // ⌘N.
+        app.newNote(nil)
+        check("⌘N makes a note and opens it", await eventually(3) { editor.active?.url?.lastPathComponent == "Untitled.md" })
+        check("…on disk", FileManager.default.fileExists(atPath: root.appendingPathComponent("Untitled.md").path))
+
+        // Settings and Notes take turns.
+        app.openSettings()
+        check("Settings covers Notes", app.store.showingOverlay == .settings && notes.view.isHidden && app.settingsView?.isHidden == false)
+        check("…both in the strip", app.store.openOverlays == [.notes, .settings], "\(app.store.openOverlays)")
+        app.showOverlay(.notes)
+        check("and Notes covers Settings", app.store.showingOverlay == .notes && !notes.view.isHidden && app.settingsView?.isHidden == true)
+        app.closeOverlay(.settings)
+
+        // The session.
+        let state = app.sessionState.notes
+        check("the session keeps the page and the vault", state?.isOpen == true && state?.vault == app.notesWorkspace.vault?.id)
+        let open = state?.open[app.notesWorkspace.vault?.id.uuidString ?? ""]
+        check("…and the notes open in it", open?.paths == ["Inbox.md", "Cloud.md", "Untitled.md"] && open?.selected == "Untitled.md", "\(String(describing: open))")
+        if let data = try? app.sessionState.encoded(), let decoded = try? JSONDecoder().decode(SessionState.self, from: data) {
+            check("…written and read back", decoded.notes == app.sessionState.notes)
+        }
+
+        // ⌘W closes the page; ⌥⌘N brings it back with its notes.
+        app.closeSelectedTab(nil)
+        check("⌘W closes the page", await eventually(2) { !self.app.store.openOverlays.contains(.notes) && self.app.store.showingOverlay == nil })
+        check("…not the terminal tab under it", app.store.tabs.contains { $0.id == tab?.id })
+        check("…its notes closed", editor.buffers.isEmpty)
+        app.toggleNotes(nil)
+        check("⌥⌘N brings it back with its notes", await eventually(3) { editor.buffers.count == 3 && editor.active?.url?.lastPathComponent == "Untitled.md" })
+        app.toggleNotes(nil)
+        check("…and ⌥⌘N again gives the terminal back", app.store.showingOverlay == nil && app.store.openOverlays == [.notes])
     }
 
     /// Settings (⌘,): a tab, as Warp's; settings.json behind it, as VS

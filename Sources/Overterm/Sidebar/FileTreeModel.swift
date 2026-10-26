@@ -54,6 +54,12 @@ final class FileTreeModel: ObservableObject {
     /// Noise that is never what you are looking for in a tree.
     private static let hiddenNames: Set<String> = [".git", ".DS_Store"]
 
+    /// A vault's tree (Notes): no hidden files — `.overterm` holds the
+    /// vault's settings — macOS 13's iCloud placeholders as the notes they
+    /// stand for, no atomic write's leftovers, and no git asked about
+    /// ignored files.
+    var isVault = false
+
     func setRoot(_ url: URL?) {
         guard url != root else { return }
         if let root { expandedByRoot[root] = expanded }
@@ -140,9 +146,16 @@ final class FileTreeModel: ObservableObject {
     private func listing(of dir: URL) -> [FileEntry] {
         if let cached = listings[dir] { return cached }
         let keys: [URLResourceKey] = [.isDirectoryKey]
-        let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys)) ?? []
+        var urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys)) ?? []
+        if isVault {
+            urls = urls.compactMap { url in
+                let name = url.lastPathComponent
+                if let real = CloudPlaceholder.file(forPlaceholder: name) { return dir.appendingPathComponent(real) }
+                return CloudPlaceholder.isHidden(name) ? nil : url
+            }
+        }
         let entries =
-            urls
+            Set(urls)
             .filter { !Self.hiddenNames.contains($0.lastPathComponent) }
             .map { FileEntry(url: $0, isDirectory: (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false) }
             .sorted {
@@ -177,7 +190,7 @@ final class FileTreeModel: ObservableObject {
     /// `check-ignore` per folder listing — then redraws. Outside a
     /// repository git fails and nothing is dimmed.
     private func checkIgnored(_ entries: [FileEntry], in dir: URL) {
-        guard let root, !entries.isEmpty, !ignoreChecked.contains(dir) else { return }
+        guard !isVault, let root, !entries.isEmpty, !ignoreChecked.contains(dir) else { return }
         ignoreChecked.insert(dir)
         let paths = entries.map(\.url.path)
         Task { [weak self] in

@@ -29,6 +29,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         didSet { header?.showControls(zoom: showsZoom, close: showsClose) }
     }
     var usesGit = true
+    /// What the editor shows changed: another file, none, the same one
+    /// reloaded.
+    var onShowing: ((EditorBuffer?) -> Void)?
+    /// ⇧⌘V and the header's eye, when the host has a preview of its own
+    /// (Notes' beside the editor) instead of the one over the text.
+    var onTogglePreview: (() -> Void)?
     /// Where Go to File looks: the window's checkout.
     var workspaceRoot: (() -> URL?)?
     /// The window's API client: a `.bru` request opens as one, sent through it.
@@ -420,7 +426,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
     }
 
-    private func closeAll(_ done: @escaping (Bool) -> Void) {
+    /// Every file closed, asking about each with edits; false once one is
+    /// kept.
+    func closeAll(_ done: @escaping (Bool) -> Void) {
         guard let last = buffers.indices.last else { return done(true) }
         closeBuffer(at: last) { [weak self] closed in
             guard closed, let self else { return done(false) }
@@ -735,6 +743,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// ⇧⌘V or the header's eye: the file rendered, or its text again.
     func toggleMarkdownPreview() {
         guard let buffer = active, buffer.language?.id == "markdown" || buffer.request != nil else { return }
+        if buffer.request == nil, let onTogglePreview { return onTogglePreview() }
         buffer.showsPreview.toggle()
         updatePreview()
         if !buffer.showsPreview { focus() }
@@ -745,6 +754,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     func updatePreview() {
         guard isViewLoaded else { return }
         let buffer = active
+        onShowing?(buffer)
         if let request = buffer?.request, buffer?.document.unavailable == nil {
             header.setPreview(available: true, showing: buffer?.showsPreview == true, request: true)
             preview.isHidden = true

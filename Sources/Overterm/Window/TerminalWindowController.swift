@@ -68,6 +68,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private var overviewPoll: Timer?
     /// The Settings tab's page (Warp's): over the window's body while it shows.
     let settingsPage = SettingsPageModel()
+    /// The Notes page's vault, index and open notes; its view is made the
+    /// first time it shows (`notes`).
+    let notesWorkspace = NotesWorkspace(vaults: NoteVaults())
+    var notes: NotesViewController?
+    /// Where a page made late goes: the window's content, under the strip,
+    /// beside the Settings page (so the palette stays over it).
+    private weak var overlayHost: NSView?
+    private weak var overlayStrip: NSView?
     /// The pages that cover the body (WorkspaceOverlay), each its own view.
     private var overlayViews: [WorkspaceOverlay: NSView] = [:]
     var settingsView: NSView? { overlayViews[.settings] }
@@ -1186,7 +1194,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                         name: $0.name, color: $0.color.rawValue, isCollapsed: $0.isCollapsed, isStashed: $0.isStashed,
                         boundFolder: $0.folder, restoresOnLaunch: $0.restoresOnLaunch,
                         takesNewTabs: $0.takesNewTabs)
-                })
+                },
+            notes: notesSessionState)
     }
 
     /// The last save, at quit or when the window closes (whichever comes
@@ -1270,6 +1279,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             if !pages.isEmpty { pendingBrowserPages[tab.id] = (pages, min(saved.browserPage ?? 0, pages.count - 1)) }
         }
         store.normalize()
+        if let notes = state.notes { restoreNotes(notes) }
         if let i = state.selectedIndex, store.tabs.indices.contains(i) { store.select(index: i) }
         // A tab inside a stashed or collapsed island must not stay selected.
         if let selected = store.selected, let group = store.group(of: selected), group.isStashed || group.isCollapsed,
@@ -1287,10 +1297,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         let tabChanges = store.$tabs
             .map { tabs in Publishers.MergeMany(tabs.map { $0.objectWillChange }).map { _ in () }.prepend(()) }
             .switchToLatest()
-        tabChanges.merge(with: store.$selectedID.map { _ in () })
-            .throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)
-            .sink { [weak self] in self?.saveSession(to: url) }
-            .store(in: &cancellables)
+        tabChanges.merge(
+            with: store.$selectedID.map { _ in () }, store.$openOverlays.map { _ in () }, notesWorkspace.objectWillChange.map { _ in () }
+        )
+        .throttle(for: .seconds(1), scheduler: DispatchQueue.main, latest: true)
+        .sink { [weak self] in self?.saveSession(to: url) }
+        .store(in: &cancellables)
     }
 
     /// What the last save wrote, so an unchanged session isn't written again.
@@ -2594,6 +2606,12 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 symbol: "sparkles"
             ) { [weak self] _, _ in self?.cleanUpMergedWorktrees(nil) },
         ]
+        if store.showingOverlay == .notes, notesWorkspace.vault != nil {
+            items.insert(
+                PaletteItem(id: "a.newNote", group: .action, title: "New Note", subtitle: "⌘N", symbol: "square.and.pencil") {
+                    [weak self] _, _ in self?.newNote(in: nil)
+                }, at: 0)
+        }
         if store.selected?.isSplit == true {
             items += [
                 PaletteItem(id: "a.nextPane", group: .action, title: "Next Pane", subtitle: "⌘]", symbol: "arrow.right.square") {
@@ -2631,6 +2649,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             ) { [weak self] _, _ in self?.showAPIClient(nil) },
             PaletteItem(id: "a.diff", group: .action, title: "Changes", subtitle: "Changed files and their diffs  ⌥⌘D", symbol: "plusminus") {
                 [weak self] _, _ in self?.toggleDiff(nil)
+            },
+            PaletteItem(id: "a.notes", group: .action, title: "Notes", subtitle: "Markdown notes, synced through iCloud Drive  ⌥⌘N", symbol: "note.text") {
+                [weak self] _, _ in self?.showOverlay(.notes)
             },
             PaletteItem(id: "a.snippet", group: .action, title: "New Snippet…", subtitle: nil, symbol: "text.badge.plus") { [weak self] _, _ in
                 self?.editSnippet(nil)
@@ -2873,7 +2894,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 if keys.contains(where: { $0.hasPrefix("browser.") }) { self.browserSettingsChanged() }
                 if keys.contains(where: { $0.hasPrefix("api.") }) { self.apiSettingsChanged() }
                 let editorKeys = keys.filter { $0.hasPrefix("editor.") }
-                if !editorKeys.isEmpty { self.editor?.applySettings(editorKeys) }
+                if !editorKeys.isEmpty {
+                    self.editor?.applySettings(editorKeys)
+                    self.notes?.editor.applySettings(editorKeys)
+                }
             }
             .store(in: &cancellables)
     }
@@ -2903,6 +2927,8 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         // The editor is painted from the terminal's colours too, and has
         // its own vocabulary for them (EditorTheme).
         editor?.applyTerminalColors()
+        notes?.editor.applyTerminalColors()
+        notes?.recolor()
     }
 
     /// The overrides file from both files; Ghostty reloads only when it changed.
@@ -2916,7 +2942,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     private func addOverlay(_ overlay: WorkspaceOverlay, _ view: NSView, in content: NSView, below tabBar: NSView) {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isHidden = true
-        content.addSubview(view)
+        overlayHost = content
+        overlayStrip = tabBar
+        // In the place the first page took, not over what came after it.
+        if let first = overlayViews.values.first {
+            content.addSubview(view, positioned: .above, relativeTo: first)
+        } else {
+            content.addSubview(view)
+        }
         NSLayoutConstraint.activate([
             view.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             view.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -2929,7 +2962,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     /// A page, opened if it isn't, over the body — in place of whichever
     /// page showed: they take turns.
     func showOverlay(_ overlay: WorkspaceOverlay) {
-        guard let view = overlayViews[overlay] else { return }
+        guard let view = overlayViews[overlay] ?? makeOverlay(overlay) else { return }
         hideAgentOverview()
         if peek.isOpen { peek.close() }
         hideSpotlight(keepTerminalSearch: false)
@@ -2937,6 +2970,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         store.showOverlay(overlay)
         view.isHidden = false
         window?.makeFirstResponder(view)
+        if overlay == .notes { notesShown() }
+    }
+
+    /// A page not made at launch: Notes, the first time it shows.
+    private func makeOverlay(_ overlay: WorkspaceOverlay) -> NSView? {
+        guard overlay == .notes, let content = overlayHost, let strip = overlayStrip, let controller = makeNotes() else { return nil }
+        addOverlay(.notes, controller.view, in: content, below: strip)
+        return controller.view
     }
 
     /// Uncovers the selected terminal tab; the pages stay in the strip.
@@ -2947,12 +2988,21 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         if focus { focusSelectedTerminal() }
     }
 
-    /// Its ✕, or ⌘W while it shows.
+    /// Its ✕, or ⌘W while it shows. Notes asks about unsaved notes first.
     func closeOverlay(_ overlay: WorkspaceOverlay) {
+        if overlay == .notes, let notes, !notes.editor.buffers.isEmpty {
+            notes.closeNotes { [weak self] closed in
+                guard closed, let self else { return }
+                if self.store.showingOverlay == .notes { self.hideOverlay() }
+                self.store.closeOverlay(.notes)
+            }
+            return
+        }
         if store.showingOverlay == overlay { hideOverlay() }
         store.closeOverlay(overlay)
         switch overlay {
         case .settings: settingsPage.draft = nil
+        case .notes: break
         }
     }
 
@@ -3004,7 +3054,10 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
     func closeTabsWithoutAsking(_ tabs: [Tab]) { tabs.forEach { removeTab($0) } }
 
     /// The editor's file, when it has unsaved changes.
-    var unsavedEditorFile: String? { editor?.unsavedNames.first }
+    var unsavedEditorFile: String? { unsavedEditorNames.first }
+
+    /// Files with unsaved edits: the editor pane's and the Notes page's.
+    var unsavedEditorNames: [String] { (editor?.unsavedNames ?? []) + (notes?.unsavedNames ?? []) }
 
     func closeTabs(of view: TerminalView, mode: ghostty_action_close_tab_mode_e) {
         guard let tab = tab(containing: view), let i = store.index(of: tab) else { return }
@@ -3229,9 +3282,9 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
 
     /// Closing the window closes every tab: always confirmed.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if let editor, let name = editor.unsavedNames.first {
+        if let name = unsavedEditorNames.first {
             let alert = NSAlert()
-            let others = editor.unsavedNames.count - 1
+            let others = unsavedEditorNames.count - 1
             alert.messageText = others > 0 ? "“\(name)” and \(others) more have unsaved changes." : "“\(name)” has unsaved changes."
             alert.informativeText = "Save it (⌘S) first, or close the window and lose them."
             alert.addButton(withTitle: "Cancel")
@@ -3297,6 +3350,12 @@ extension TerminalWindowController: NSMenuItemValidation {
         if menuItem.action == #selector(showAPIClient(_:)) {
             menuItem.state = sidebarItem?.isCollapsed == false && sidebarPanel.panel == .api ? .on : .off
             return Settings.shared.apiEnabled
+        }
+        if menuItem.action == #selector(toggleNotes(_:)) {
+            menuItem.state = store.showingOverlay == .notes ? .on : .off
+        }
+        if menuItem.action == #selector(newNote(_:)) {
+            return store.showingOverlay == .notes && notesWorkspace.vault != nil
         }
         if menuItem.action == #selector(toggleTabPeek(_:)) {
             menuItem.state = peek.isOpen ? .on : .off

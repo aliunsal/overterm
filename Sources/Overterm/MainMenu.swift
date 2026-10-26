@@ -35,6 +35,8 @@ enum MainMenu {
         command(fileMenu, "New Claude Tab", #selector(TerminalWindowController.newClaudeTab(_:)), "tabs.newClaude")
         command(fileMenu, "New Codex Tab", #selector(TerminalWindowController.newCodexTab(_:)), "tabs.newCodex")
         command(fileMenu, "New Task…", #selector(TerminalWindowController.newTask(_:)), "tasks.new")
+        // While the Notes page shows (validateMenuItem).
+        command(fileMenu, "New Note", #selector(TerminalWindowController.newNote(_:)), "notes.new")
         fileMenu.addItem(
             withTitle: "Clean Up Merged Worktrees…", action: #selector(TerminalWindowController.cleanUpMergedWorktrees(_:)), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Pin / Unpin Tab", action: #selector(TerminalWindowController.togglePinTab(_:)), keyEquivalent: "")
@@ -106,6 +108,8 @@ enum MainMenu {
         command(viewMenu, "Browser", #selector(TerminalWindowController.toggleBrowser(_:)), "browser.toggle")
         viewMenu.addItem(withTitle: "Pull Request", action: #selector(TerminalWindowController.showPullRequest(_:)), keyEquivalent: "")
         command(viewMenu, "Usage", #selector(TerminalWindowController.showUsage(_:)), "usage.show")
+        // Ticked while the page shows.
+        command(viewMenu, "Notes", #selector(TerminalWindowController.toggleNotes(_:)), "notes.toggle")
         // Ghostty's own defaults, so they also work while the editor has the keyboard.
         viewMenu.addItem(.separator())
         command(viewMenu, "Split Right", #selector(TerminalWindowController.splitRight(_:)), "splits.right")

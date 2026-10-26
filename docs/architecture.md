@@ -993,6 +993,55 @@ opens in Bruno and runs under `bru run` — nothing of Overterm's own on disk.
   runs while either tool set is given (`BrowserBridge.update`). The
   response's ✦ hands a request and what came back to an agent.
 
+## Notes (⌥⌘N)
+
+Markdown notes, Obsidian's way, in a folder — iCloud Drive's "Overterm
+Notes" by default, so they reach the user's other Macs and their iPhone's
+Files app (docs/design/notes/ has the analysis and the plan). Not
+Obsidian's vault format: no `.obsidian/`, no plugins; its syntax, so the
+notes stay portable.
+
+- **The page** (`NotesViewController`, `TerminalWindowController+Notes`):
+  a `WorkspaceOverlay` over the body, as Settings is — in the strip after
+  the terminal tabs, taking turns with Settings, made the first time it
+  shows. The vault's tree on the left (`FileTreeModel` with `isVault`: no
+  hidden files, no git), an `EditorViewController` of its own in the
+  middle (no zoom, no ✕, no git gutter, its writes through iCloud), the
+  note rendered beside it (`MarkdownPreviewView`; ⇧⌘V hides it). ⌘W closes
+  the page after asking about unsaved notes; ⌥⌘N brings it back with the
+  notes that were open. The window's unsaved-changes questions (closing
+  it, quitting) count the page's notes too.
+- **Vaults** (`NoteVaults`, `VaultConfig`): which folders are vaults is
+  this Mac's — `vaults.json` beside `snippets.json`; how one is laid out
+  (daily notes, attachments, templates, where new notes go) travels in it,
+  `.overterm/notes.json`. Nothing is made in iCloud Drive until asked.
+- **iCloud** (`CloudFiles`): a plain folder in iCloud Drive — no
+  entitlement, no developer account; macOS syncs it. The spike measured
+  what is left to us: a file only in iCloud blocks its reader about a
+  second, so nothing reads one on the main thread — the page downloads a
+  note before the editor gets it, saying so; the index asks for every
+  note in the cloud at once. Writes are coordinated and atomic. FSEvents
+  reports a file going to iCloud and coming back as a change: the index
+  reads a file again only when its size or date changed. macOS 13's
+  `.Note.md.icloud` placeholders stand for their notes. `SimulatedCloudFiles`
+  plays iCloud for the tests and the `notes` scenario; nothing tested
+  touches iCloud.
+- **Syntax** (`NoteSyntax`, pure): wikilinks with headings, blocks and
+  aliases, embeds, tags, frontmatter, tasks, highlights, comments,
+  callouts and markdown links to notes — UTF-16 ranges, nothing inside
+  code or a comment.
+- **Links** (`NoteLinks`, pure): a link resolves to the nearest note of
+  its name, case and Unicode normalization aside; a rename's plan keeps
+  every other link pointing where it did.
+- **The index** (`NoteIndex`): every note read in the background, kept
+  current from FSEvents — backlinks, tags, the text to search. A note
+  saved here is indexed at once.
+- **Live**: a note changed elsewhere (another device, an agent) reloads
+  in the editor unless it has edits.
+- **Session**: `session.json`'s `notes` — the page in the strip or not,
+  the vault, each vault's open notes. A key of its own, which an older
+  version reads past.
+
 ## Simulator
 
 The browser's column shows one of two things, and the title bar has a
@@ -1096,6 +1145,9 @@ opener (the browser).
 | Tabs (cwd, name, colour, pin, agent) + selection | `~/Library/Application Support/Overterm/session.json` (1 s debounced + on quit) |
 | Shell panes' text (last 2000 lines, plain) | `…/Overterm/scrollback/<uuid>.txt`, named in session.json; written once, at quit or window close |
 | Snippets | `…/Overterm/snippets.json` |
+| Vaults (which folders, the one last open) | `…/Overterm/vaults.json` |
+| A vault's layout (daily notes, attachments…) | `<vault>/.overterm/notes.json`, synced with it |
+| The Notes page: open, its vault, each vault's notes | session.json's `notes` |
 | Sidebar/changes visible, sidebar panel, changes scope | `UserDefaults` (`sidebarVisible`, `diffVisible`, `sidebarPanel`, `diffScope`) |
 | The app files open in | `UserDefaults` (`openWithApp`, a bundle id) |
 | Files dropped as promises (Photos, Safari) | `~/Library/Caches/io.github.overcraft-hq.overterm/Drops/<uuid>/` (`AppEnvironment.dropsDirectory`) |

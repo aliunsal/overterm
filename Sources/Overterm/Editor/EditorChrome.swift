@@ -63,6 +63,10 @@ final class EditorHeaderView: NSView {
         scroll.hasVerticalScroller = false
         scroll.horizontalScrollElasticity = .allowed
         scroll.verticalScrollElasticity = .none
+        // A strip, never anything to inset: under the title bar (the Notes
+        // page starts right below the tabs) AppKit pushed the tabs down.
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
 
         Self.style(preview, "eye", tip: "Preview Markdown — ⇧⌘V", color: text, target: self, action: #selector(togglePreview))
         preview.identifier = NSUserInterfaceItemIdentifier("markdownPreviewButton")

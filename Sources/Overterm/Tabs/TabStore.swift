@@ -61,6 +61,11 @@ final class TabStore: ObservableObject {
         if showingOverlay != overlay { showingOverlay = overlay }
     }
 
+    /// In the strip, not shown (a session restored).
+    func openOverlay(_ overlay: WorkspaceOverlay) {
+        if !openOverlays.contains(overlay) { openOverlays.append(overlay) }
+    }
+
     /// The selected terminal tab uncovered; the pages stay in the strip.
     func hideOverlay() {
         if showingOverlay != nil { showingOverlay = nil }

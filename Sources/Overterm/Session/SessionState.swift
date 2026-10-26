@@ -101,6 +101,9 @@ struct SessionState: Codable, Equatable {
     /// The islands, in strip order; a tab points at one by index. Absent
     /// in session files written before groups existed.
     var groups: [GroupState]?
+    /// The Notes page: open or not, its vault, each vault's open notes.
+    /// A key of its own, which an older version reads past.
+    var notes: NotesState?
 
     static let empty = SessionState(tabs: [], selectedIndex: nil)
 
