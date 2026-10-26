@@ -13,6 +13,10 @@ final class EditorDocument: ObservableObject {
     /// On-disk modification date at load/save, to notice outside changes.
     private var loadedModification: Date?
 
+    /// How the file is written; nil writes it atomically
+    /// (EditorViewController.writeFile).
+    var writer: (@MainActor (Data, URL) throws -> Void)?
+
     /// Bigger than this is a log or a dump, not something to edit here.
     static let maxBytes = 5 * 1024 * 1024
 
@@ -79,7 +83,7 @@ final class EditorDocument: ObservableObject {
         guard let url, unavailable == nil else { return }
         if changedOnDisk, !overwriting { throw ChangedOnDisk(name: name) }
         let target = url.resolvingSymlinksInPath()
-        try Data(newText.utf8).write(to: target, options: .atomic)
+        if let writer { try writer(Data(newText.utf8), target) } else { try Data(newText.utf8).write(to: target, options: .atomic) }
         text = newText
         isDirty = false
         loadedModification = Self.modification(of: url)

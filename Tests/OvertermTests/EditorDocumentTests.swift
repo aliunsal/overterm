@@ -31,6 +31,26 @@ final class EditorDocumentTests: XCTestCase {
     }
 
     @MainActor
+    func testASaveGoesThroughTheWriterItIsGiven() throws {
+        let url = dir.appendingPathComponent("Note.md")
+        try "# a\n".write(to: url, atomically: true, encoding: .utf8)
+        let doc = EditorDocument()
+        let files = SimulatedCloudFiles()
+        var written: [URL] = []
+        doc.writer = { data, target in
+            written.append(target)
+            try files.write(data, to: target)
+        }
+        doc.load(url)
+        doc.markEdited()
+        try doc.save("# b\n")
+        XCTAssertEqual(written.map(\.lastPathComponent), ["Note.md"])
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "# b\n")
+        XCTAssertFalse(doc.isDirty)
+        XCTAssertFalse(doc.changedOnDisk, "its own write is not an outside change")
+    }
+
+    @MainActor
     func testBinaryAndNonUTF8AreNotEditable() throws {
         let bin = dir.appendingPathComponent("logo.png")
         try Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0x01]).write(to: bin)

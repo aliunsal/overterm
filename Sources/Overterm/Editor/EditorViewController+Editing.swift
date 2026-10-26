@@ -103,7 +103,10 @@ extension EditorViewController: CodeTextViewHost {
         case "editor.toggleSoftWrap":
             buffer.wrapOverride = !(textView.textContainer?.widthTracksTextView ?? false)
             applyWrap()
-        case "editor.toggleZoom": onToggleZoom?()
+        case "editor.toggleZoom":
+            // Not swallowed where there is nothing to zoom (Notes).
+            guard let onToggleZoom else { return false }
+            onToggleZoom()
         case "editor.markdownPreview":
             guard buffer.language?.id == "markdown" else { return false }
             toggleMarkdownPreview()

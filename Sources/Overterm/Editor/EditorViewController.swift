@@ -14,6 +14,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     var onToggleZoom: (() -> Void)?
     /// A file was saved (the browser's reload on save).
     var onSaved: (() -> Void)?
+    /// The text of `buffer` changed — every edit: a preview beside the
+    /// editor follows (Notes).
+    var onTextChange: ((EditorBuffer) -> Void)?
+    /// How a file is written; nil writes it atomically. Notes writes
+    /// through iCloud's coordinator.
+    var writeFile: (@MainActor (Data, URL) throws -> Void)?
+    /// The header's zoom and ✕, and the gutter's git marks: the window's
+    /// editor has them, an editor hosted elsewhere (Notes) need not.
+    var showsZoom = true {
+        didSet { header?.showControls(zoom: showsZoom, close: showsClose) }
+    }
+    var showsClose = true {
+        didSet { header?.showControls(zoom: showsZoom, close: showsClose) }
+    }
+    var usesGit = true
     /// Where Go to File looks: the window's checkout.
     var workspaceRoot: (() -> URL?)?
     /// The window's API client: a `.bru` request opens as one, sent through it.
@@ -105,6 +120,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             return self.opener.menu(for: url)
         }
         header.onClose = { [weak self] in self?.requestClose() }
+        header.showControls(zoom: showsZoom, close: showsClose)
         opener.$current
             .sink { header.setRevealTitle(OpenWith.openTitle($0)) }
             .store(in: &cancellables)
@@ -259,6 +275,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             return
         }
         let buffer = EditorBuffer()
+        buffer.document.writer = writeFile
         buffer.storage.delegate = self
         buffer.load(url, attributes: baseAttributes)
         attachRequest(buffer)
@@ -634,6 +651,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         gutter.textDidChange()
         bufferDidChange(buffer)
         scheduleGitMarks(buffer)
+        onTextChange?(buffer)
     }
 
     /// The characters on screen, and a screen's worth either side: scrolling

@@ -94,13 +94,13 @@ final class EditorHeaderView: NSView {
             tabs.bottomAnchor.constraint(equalTo: document.bottomAnchor),
             close.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
             close.centerYAnchor.constraint(equalTo: centerYAnchor),
-            close.widthAnchor.constraint(equalToConstant: 22),
+            closeWidth,
             reveal.trailingAnchor.constraint(equalTo: close.leadingAnchor, constant: -2),
             reveal.centerYAnchor.constraint(equalTo: centerYAnchor),
             reveal.widthAnchor.constraint(equalToConstant: 22),
             zoom.trailingAnchor.constraint(equalTo: reveal.leadingAnchor, constant: -2),
             zoom.centerYAnchor.constraint(equalTo: centerYAnchor),
-            zoom.widthAnchor.constraint(equalToConstant: 22),
+            zoomWidth,
         ])
     }
 
@@ -146,6 +146,18 @@ final class EditorHeaderView: NSView {
             let tab = tabs.arrangedSubviews[active]
             DispatchQueue.main.async { tab.scrollToVisible(tab.bounds) }
         }
+    }
+
+    private lazy var zoomWidth = zoom.widthAnchor.constraint(equalToConstant: 22)
+    private lazy var closeWidth = close.widthAnchor.constraint(equalToConstant: 22)
+
+    /// The zoom and ✕ buttons, or not — an editor that isn't the window's
+    /// pane (Notes) has neither to offer. Gone, they take no room.
+    func showControls(zoom showsZoom: Bool, close showsClose: Bool) {
+        zoom.isHidden = !showsZoom
+        zoomWidth.constant = showsZoom ? 22 : 0
+        close.isHidden = !showsClose
+        closeWidth.constant = showsClose ? 22 : 0
     }
 
     func setZoomed(_ zoomed: Bool) {

@@ -6,6 +6,10 @@ version ([SemVer](https://semver.org)): a commit that changes the app bumps it
 `Scripts/bump-version.sh`, which adds the line here. The commit that brings a
 version is tagged `v<version>`.
 
+## 1.2.8 — 2026-10-27
+
+- editor: a host other than the window
+
 ## 1.2.7 — 2026-10-27
 
 - agents: a pane made at launch gets the MCP config
