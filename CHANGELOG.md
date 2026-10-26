@@ -6,6 +6,10 @@ version ([SemVer](https://semver.org)): a commit that changes the app bumps it
 `Scripts/bump-version.sh`, which adds the line here. The commit that brings a
 version is tagged `v<version>`.
 
+## 1.2.1 — 2026-10-27
+
+- build: GhosttyKit builds with Xcode 26
+
 ## 1.2.0 — 2026-10-21
 
 - api: an API client in the sidebar that is Bruno's files — requests, environments, scripts and tests, a runner, imports from OpenAPI, Postman, .http and cURL, My Requests, and MCP tools for agents (⌥⌘R)
