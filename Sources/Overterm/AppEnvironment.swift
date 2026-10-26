@@ -104,6 +104,24 @@ enum AppEnvironment {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/sessions", isDirectory: true)
     }
 
+    /// iCloud Drive's own folder, where macOS syncs whatever is in it —
+    /// nil when iCloud Drive is off on this Mac. An isolated run has none:
+    /// writing there would reach every one of the user's devices.
+    static var iCloudDriveDirectory: URL? {
+        guard !isIsolated else { return nil }
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    /// Where a first vault is offered: "iCloud Drive › Overterm Notes", or
+    /// in an isolated run a folder of its own. Made only when the user says
+    /// so (NoteVaults).
+    static var defaultVaultDirectory: URL? {
+        if isIsolated { return supportDirectory.appendingPathComponent("Notes", isDirectory: true) }
+        return iCloudDriveDirectory?.appendingPathComponent("Overterm Notes", isDirectory: true)
+    }
+
     private static let isolatedSuite = "\(bundleIdentifier).isolated"
 
     /// UserDefaults.standard, or a throwaway suite for an isolated run.
