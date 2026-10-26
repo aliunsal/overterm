@@ -689,6 +689,15 @@ Claude Code needs no configuration for tab flags: with `TERM_PROGRAM=ghostty`
 its default notification channel is OSC 777 and its progress bar (OSC 9;4) is
 on by default (checked against 2.1.280).
 
+Both get the MCP server (`BrowserBridge`: the browser's, the API client's
+and the notes' tools, at the pane's own address). Claude reads a config
+file, `--mcp-config "$OVERTERM_MCP_CONFIG"`; Codex takes overrides,
+`-c mcp_servers.overterm.url="$OVERTERM_MCP_URL"` and
+`bearer_token_env_var="OVERTERM_MCP_TOKEN"` — the token by its variable's
+name, never on a command line (`Settings.codexMCPArguments`). Codex's
+documentation shows dotted `-c` keys under `mcp_servers` but not a server
+made by them alone; checked against the docs, not a Codex binary.
+
 ## Usage
 
 What is left of each agent's quota, and what the work would have cost, in
@@ -1068,6 +1077,15 @@ notes stay portable.
   Theirs (asked first if it has edits), Compare (their version in the
   preview's place). The version kept is reloaded whatever its date: iCloud
   may date it before the text loaded.
+- **Agents** (`NotesMCP`, Settings ▸ Agents ▸ Notes): `notes_vaults`,
+  `notes_list`, `notes_search`, `notes_read`, `notes_backlinks`,
+  `notes_write` (create, replace, append) and `notes_daily`, on the same
+  MCP server as the browser's — for Claude and Codex. Never outside a vault
+  or into its hidden folders, never over a note open here with unsaved
+  edits; reads and writes off the main thread (a note in iCloud blocks a
+  second), and what an agent writes is indexed and reloaded at once. ⌥⌘L
+  hands the note, or its selection, to an agent through ⌘L's sheet — ⇧⌘L,
+  the plan's key, is the editor's Select All Matches.
 - **Session**: `session.json`'s `notes` — the page in the strip or not,
   the vault, each vault's open notes. A key of its own, which an older
   version reads past.

@@ -239,9 +239,18 @@ final class Settings: ObservableObject {
             BrowserBridge.shared.isServing
                 ? (claudeArguments + " --mcp-config \"$\(BrowserBridge.configVariable)\"").trimmingCharacters(in: .whitespaces)
                 : claudeArguments
-        case .codex: codexArguments
+        case .codex:
+            // The same server for Codex, through its config overrides: the
+            // pane's address (the shell expands it) and the variable its
+            // token is in — never the token itself on a command line.
+            BrowserBridge.shared.isServing
+                ? (codexArguments + " " + Self.codexMCPArguments).trimmingCharacters(in: .whitespaces)
+                : codexArguments
         }
     }
+
+    static let codexMCPArguments =
+        "-c \"mcp_servers.overterm.url=\\\"$\(BrowserBridge.urlVariable)\\\"\" -c 'mcp_servers.overterm.bearer_token_env_var=\"\(BrowserBridge.tokenVariable)\"'"
 
     /// The quota gauge at the right of the tab strip.
     var usageChip: Bool { bool("general.usageChip") }
@@ -298,6 +307,7 @@ final class Settings: ObservableObject {
     var apiVerifyTLS: Bool { bool("api.verifyTLS") }
     var apiDiscoverServers: Bool { bool("api.discoverServers") }
     var apiAgentControl: Bool { apiEnabled && bool("api.agentControl") }
+    var notesAgentControl: Bool { bool("agents.notesControl") }
 
     // MARK: Ghostty overrides
 

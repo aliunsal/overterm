@@ -125,7 +125,8 @@ folder; "Overterm Notes" in iCloud Drive reaches your other Macs and your
 iPhone's Files app, with no account of ours in between. Obsidian's syntax
 (`[[links]]`, `#tags`, frontmatter), not its app: the notes stay plain files.
 A note changed on another device reloads here; one still in iCloud is
-downloaded before it opens.
+downloaded before it opens. Claude and Codex get MCP tools for the notes
+(search, read, write, add to today's), and ⌥⌘L hands a note to an agent.
 
 ### And the work around the work
 
@@ -192,6 +193,7 @@ The defaults; every one of them is rebindable in Settings ▸ Keyboard Shortcuts
 | ⌘F | Search the terminal and the files |
 | ⌘B / ⌥⌘D | Sidebar / changes |
 | ⌥⌘N / ⌘N / ⌘O | Notes / a new note / find or make one, while they show |
+| ⌥⌘L | Ask an agent about the note (or its selection) |
 | ⇧⌘E | Tab Peek (or three fingers down) |
 | ⌘, / ⌥⌘O | Settings / what's new |
 | ⌘-click | Open a printed `path:line` in the editor |

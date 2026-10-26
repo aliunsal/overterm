@@ -2,7 +2,23 @@ import AppKit
 
 /// The Notes page (⌥⌘N): made the first time it shows, a page over the
 /// body that takes turns with Settings (WorkspaceOverlay).
-extension TerminalWindowController {
+extension TerminalWindowController: AgentNotes {
+    /// Agents reach the notes over the MCP server (NotesMCP).
+    func wireNotes() {
+        BrowserBridge.shared.resolveNotes = { [weak self] in self }
+    }
+
+    func noteIsEditedHere(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        return notes?.editor.buffers.contains { $0.document.isDirty && $0.url?.standardizedFileURL.path == path } ?? false
+    }
+
+    func noteWrittenByAgent(_ url: URL, text: String) {
+        if let path = notesWorkspace.path(for: url) { notesWorkspace.index?.written(path, text: text) }
+        notesWorkspace.tree.reload()
+        notes?.editor.reloadIfChangedOnDisk()
+    }
+
     func makeNotes() -> NotesViewController? {
         if let notes { return notes }
         guard let theme else { return nil }
@@ -63,6 +79,16 @@ extension TerminalWindowController {
         } catch {
             showNotesError("Couldn't make today's note.", error)
         }
+    }
+
+    /// ⌥⌘L while Notes shows: the selection — or the whole note — to an
+    /// agent, with where it is from, through the same sheet as ⌘L.
+    @objc func askAgentAboutNote(_ sender: Any?) {
+        guard store.showingOverlay == .notes, let text = notes?.textForAgent() else { return }
+        let selected = store.selected
+        let agents = store.tabs.filter { $0.agent != nil }
+        let ordered = agents.filter { $0.id == selected?.id } + agents.filter { $0.id != selected?.id }
+        presentAskAgent(text: text, command: nil, folder: selected?.workingDirectory, targets: ordered)
     }
 
     var notesSessionState: NotesState? {

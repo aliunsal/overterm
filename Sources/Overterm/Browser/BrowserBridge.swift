@@ -8,19 +8,31 @@ import Network
 ///
 /// A pane learns its address from `OVERTERM_MCP_CONFIG`, a Claude Code
 /// MCP config file written for it; Overterm starts `claude` with
-/// `--mcp-config "$OVERTERM_MCP_CONFIG"` (Settings.arguments).
+/// `--mcp-config "$OVERTERM_MCP_CONFIG"` (Settings.arguments). Codex
+/// takes the same server as config overrides on its command line, from
+/// `OVERTERM_MCP_URL` and the token's variable `OVERTERM_MCP_TOKEN`.
+/// Besides the browser's tools it carries the API client's and the notes'.
 @MainActor
 final class BrowserBridge {
     static let shared = BrowserBridge()
     static let configVariable = "OVERTERM_MCP_CONFIG"
+    /// The same server for Codex, which takes it on its command line
+    /// (`-c mcp_servers…`, Settings.arguments) rather than from a file: the
+    /// pane's address, and the token it sends as a bearer.
+    static let urlVariable = "OVERTERM_MCP_URL"
+    static let tokenVariable = "OVERTERM_MCP_TOKEN"
 
     /// The browser of the tab a pane is in — the window answers.
     var resolve: ((String) -> AgentBrowser?)?
     /// The API client of the checkout a pane's tab is in — the window answers.
     var resolveAPI: ((String) -> AgentAPI?)?
+    /// The window's notes (not a tab's: notes aren't a checkout's).
+    var resolveNotes: (() -> AgentNotes?)?
 
-    /// Agents get the browser, the API client, or both.
-    private var wanted: Bool { Settings.shared.browserAgentControl || Settings.shared.apiAgentControl }
+    /// Agents get the browser, the API client, the notes — any of them.
+    private var wanted: Bool {
+        Settings.shared.browserAgentControl || Settings.shared.apiAgentControl || Settings.shared.notesAgentControl
+    }
 
     private var server: BridgeServer?
     private(set) var port: UInt16?
@@ -71,11 +83,19 @@ final class BrowserBridge {
     }
 
     private func handle(tag: String, message: [String: Any]) async -> [String: Any]? {
-        await BrowserMCP.handle(message, browser: { [weak self] in self?.resolve?(tag) }, api: { [weak self] in self?.resolveAPI?(tag) })
+        await BrowserMCP.handle(
+            message, browser: { [weak self] in self?.resolve?(tag) }, api: { [weak self] in self?.resolveAPI?(tag) },
+            notes: { [weak self] in self?.resolveNotes?() })
     }
 
     /// The config file for a new pane — written now, while the server is
     /// up — or nil when agents don't get the browser.
+    /// The pane's address on the server, or nil when agents get nothing.
+    func url(forPane tag: String) -> String? {
+        guard isServing, let port else { return nil }
+        return "http://127.0.0.1:\(port)/mcp/\(tag)"
+    }
+
     func configPath(forPane tag: String) -> String? {
         guard isServing, let port else { return nil }
         let config: [String: Any] = [

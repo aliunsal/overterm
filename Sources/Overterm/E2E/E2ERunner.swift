@@ -4009,6 +4009,48 @@ final class E2ERunner {
         notes.keepMine()
         let kept = (try? String(contentsOf: inboxURL, encoding: .utf8)) ?? ""
         check("Keep This One saves my edits and settles it", kept.contains("Mine wins.") && notes.conflict.versions.isEmpty && editor.unsavedNames.isEmpty, kept)
+
+        // ⌥⌘L: the note to an agent, said where it is from.
+        let handed = notes.textForAgent() ?? ""
+        check("⌥⌘L hands the note over with where it is", handed.hasPrefix("My note “Inbox.md” (") && handed.contains("Mine wins."), String(handed.prefix(120)))
+        app.askAgentAboutNote(nil)
+        check("…through the Ask an Agent sheet", await eventually(3) { self.window.attachedSheet != nil })
+        let prompt = await app.askAgentPrompt()
+        check("…whose prompt carries it", prompt.contains("Mine wins."), String(prompt.prefix(160)))
+        clickSheetButton("Cancel")
+        _ = await eventually(3) { self.window.attachedSheet == nil }
+
+        // Agents, over the MCP server, with the pane's token — as Claude or
+        // Codex in the first tab would.
+        guard let port = BrowserBridge.shared.port, let tag = app.store.tabs.first?.terminal.processTag else {
+            return check("the MCP server serves", false)
+        }
+        check("Codex is given the server too", Settings.shared.arguments(for: .codex).contains("mcp_servers.overterm.url"))
+        let endpoint = URL(string: "http://127.0.0.1:\(port)/mcp/\(tag)")!
+        func rpc(_ method: String, _ params: [String: Any]) async -> [String: Any]? {
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(BrowserBridge.shared.token)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": 9, "method": method, "params": params])
+            guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+            return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        }
+        func text(_ answer: [String: Any]?) -> String {
+            (((answer?["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String)
+                ?? ((answer?["error"] as? [String: Any])?["message"] as? String) ?? ""
+        }
+        let listed = ((await rpc("tools/list", [:]))?["result"] as? [String: Any])?["tools"] as? [[String: Any]] ?? []
+        check("the server offers the notes' tools", listed.contains { $0["name"] as? String == "notes_search" }, "\(listed.count) tools")
+        let searched = text(await rpc("tools/call", ["name": "notes_search", "arguments": ["query": "mine wins"]]))
+        check("notes_search finds a note over HTTP", searched.hasPrefix("Inbox.md"), searched)
+        let wrote = text(await rpc("tools/call", ["name": "notes_write", "arguments": ["path": "From an Agent", "text": "# From an agent\n"]]))
+        check("notes_write makes a note", wrote == "Created From an Agent.md in “Overterm Notes”.", wrote)
+        check("…on disk, and in the index at once", FileManager.default.fileExists(atPath: root.appendingPathComponent("From an Agent.md").path) && index.entries["From an Agent.md"] != nil)
+        editor.textView.insertText("unsaved", replacementRange: NSRange(location: 0, length: 0))
+        let refused = text(await rpc("tools/call", ["name": "notes_write", "arguments": ["path": "Inbox.md", "text": "x", "mode": "append"]]))
+        check("…but never over a note open here with unsaved edits", refused.contains("unsaved changes"), refused)
+        editor.saveDocument(nil)
     }
 
     /// Settings (⌘,): a tab, as Warp's; settings.json behind it, as VS

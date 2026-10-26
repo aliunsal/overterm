@@ -717,6 +717,17 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
 
     var unsavedNames: [String] { editor.unsavedNames }
 
+    /// What ⌥⌘L hands an agent: the selection, else the note — said where
+    /// it is from, so the agent can open it itself.
+    func textForAgent() -> String? {
+        guard let buffer = editor.active, let url = buffer.url else { return nil }
+        let selection = editor.textView.selectedRange()
+        let whole = selection.length == 0
+        let text = whole ? buffer.storage.string : (buffer.storage.string as NSString).substring(with: selection)
+        let path = workspace.path(for: url) ?? url.lastPathComponent
+        return "\(whole ? "My note" : "From my note") “\(path)” (\(url.path)):\n\n\(text)"
+    }
+
     /// Every note closed, asking about edits — and still listed as open, to
     /// come back with the vault or the page (reopenNotes). False when one
     /// was kept.

@@ -6,6 +6,10 @@ version ([SemVer](https://semver.org)): a commit that changes the app bumps it
 `Scripts/bump-version.sh`, which adds the line here. The commit that brings a
 version is tagged `v<version>`.
 
+## 1.7.0 — 2026-10-27
+
+- notes: agents — notes_ MCP tools for Claude and Codex, and ⌥⌘L to ask an agent about a note
+
 ## 1.6.0 — 2026-10-27
 
 - notes: a note changed on two devices at once — keep one, use theirs, or compare

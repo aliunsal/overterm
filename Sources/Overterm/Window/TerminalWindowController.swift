@@ -575,6 +575,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
         wireBrowser()
         wireOvergit()
         wireAPI()
+        wireNotes()
         split.addSplitViewItem(inboxItem)
         split.addSplitViewItem(diffItem)
         // A diagnostic run shares the real app's defaults: it must not save
@@ -2901,6 +2902,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                 if keys.contains("notifications.dockBadge") { self.updateAttentionBadge() }
                 if keys.contains(where: { $0.hasPrefix("browser.") }) { self.browserSettingsChanged() }
                 if keys.contains(where: { $0.hasPrefix("api.") }) { self.apiSettingsChanged() }
+                if keys.contains("agents.notesControl") { BrowserBridge.shared.update() }
                 let editorKeys = keys.filter { $0.hasPrefix("editor.") }
                 if !editorKeys.isEmpty {
                     self.editor?.applySettings(editorKeys)
@@ -3361,6 +3363,9 @@ extension TerminalWindowController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(toggleNotes(_:)) {
             menuItem.state = store.showingOverlay == .notes ? .on : .off
+        }
+        if menuItem.action == #selector(askAgentAboutNote(_:)) {
+            return store.showingOverlay == .notes && notes?.editor.active != nil
         }
         if menuItem.action == #selector(newNote(_:)) || menuItem.action == #selector(openNoteSwitcher(_:)) {
             return store.showingOverlay == .notes && notesWorkspace.vault != nil

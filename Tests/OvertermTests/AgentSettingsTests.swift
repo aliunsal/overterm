@@ -26,6 +26,27 @@ final class AgentSettingsTests: XCTestCase {
         XCTAssertNil(Settings(url: url, watch: false).defaultTaskAgent, "a shell only")
     }
 
+    /// Codex takes the MCP server on its command line: the pane's address
+    /// as the shell expands it, the token by the variable's name only.
+    func testCodexGetsTheServerThroughConfigOverrides() throws {
+        for shell in ["/bin/sh", "/bin/zsh"] {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: shell)
+            process.arguments = ["-c", "printf '%s\\n' \(Settings.codexMCPArguments)"]
+            process.environment = ["OVERTERM_MCP_URL": "http://127.0.0.1:4242/mcp/pane-1", "OVERTERM_MCP_TOKEN": "secret"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            try process.run()
+            process.waitUntilExit()
+            let words = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").map(String.init)
+            XCTAssertEqual(
+                words,
+                ["-c", #"mcp_servers.overterm.url="http://127.0.0.1:4242/mcp/pane-1""#, "-c", #"mcp_servers.overterm.bearer_token_env_var="OVERTERM_MCP_TOKEN""#],
+                shell)
+            XCTAssertFalse(words.joined().contains("secret"), "the token never on a command line")
+        }
+    }
+
     func testWorktreeLocations() {
         let repo = URL(fileURLWithPath: "/Users/b/acme/monorepo")
         XCTAssertEqual(TaskCreator.worktreePath(repo: repo, branch: "feat/X y").path, "/Users/b/acme/monorepo-wt-feat-x-y")

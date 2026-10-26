@@ -67,6 +67,9 @@ enum MainMenu {
         command(
             editMenu, "Ask an Agent About the Selection", #selector(TerminalWindowController.askAboutSelection(_:)),
             "agents.askSelection")
+        // While Notes shows: ⌘L there is the editor's Select Line.
+        command(
+            editMenu, "Ask an Agent About This Note", #selector(TerminalWindowController.askAgentAboutNote(_:)), "notes.ask")
         command(
             editMenu, "Copy the Last Command's Output", #selector(TerminalWindowController.copyLastOutput(_:)),
             "terminal.copyOutput")

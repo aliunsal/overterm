@@ -140,6 +140,21 @@ final class TerminalView: NSView {
             mcpValue.map { free($0) }
         }
         if let mcpValue { env.append(ghostty_env_var_s(key: mcpKey, value: mcpValue)) }
+        // And for Codex: the address and the token, as variables.
+        let urlKey = strdup(BrowserBridge.urlVariable)
+        let urlValue = mcpValue == nil ? nil : BrowserBridge.shared.url(forPane: processTag).map { strdup($0) }
+        let tokenKey = strdup(BrowserBridge.tokenVariable)
+        let tokenValue = urlValue == nil ? nil : strdup(BrowserBridge.shared.token)
+        defer {
+            free(urlKey)
+            urlValue.map { free($0) }
+            free(tokenKey)
+            tokenValue.map { free($0) }
+        }
+        if let urlValue, let tokenValue {
+            env.append(ghostty_env_var_s(key: urlKey, value: urlValue))
+            env.append(ghostty_env_var_s(key: tokenKey, value: tokenValue))
+        }
         // A restored pane runs the launcher (named after the shell) instead.
         let launcher = restoring.flatMap { _ in Scrollback.launcher() }
         let commandC = launcher.map { strdup($0) }

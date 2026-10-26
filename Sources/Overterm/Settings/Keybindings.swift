@@ -304,6 +304,8 @@ enum KeyCommands {
         .init("notes.open", "Open Note…", group: "Panels", key: "cmd+o"),
         // ⌥⌘D is the changes pane's: the palette and the menu, no key.
         .init("notes.daily", "Open Today's Note", group: "Panels"),
+        // ⇧⌘L is the editor's Select All Matches; ⌥⌘L is free in Ghostty too.
+        .init("notes.ask", "Ask an Agent About This Note", group: "Editing", key: "alt+cmd+l"),
         .init("usage.show", "Usage", group: "Panels", key: "alt+cmd+u"),
         .init("search.terminal", "Search Terminal & Files", group: "Panels", ghostty: "start_search", menu: false),
         // Editing

@@ -274,6 +274,11 @@ enum SettingsSchema {
             key: "agents.newTaskBase", section: .agents, group: "New Task", title: "New branches start from",
             help: "Empty: the main worktree's branch.", kind: .text(placeholder: "the main worktree's branch", monospaced: true),
             defaultValue: .string("")),
+        SettingSpec(
+            key: "agents.notesControl", section: .agents, group: "Notes", title: "Agents can use your notes",
+            help:
+                "Claude Code and Codex started from Overterm get MCP tools for your vaults: list, search and read notes, write one, add to today's. Never outside a vault, never over a note open here with unsaved changes.",
+            kind: .toggle, defaultValue: .bool(true)),
     ]
 
     private static let editor: [SettingSpec] = [
