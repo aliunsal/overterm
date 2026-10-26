@@ -1062,6 +1062,12 @@ notes stay portable.
   behind, and a link to a note just made must resolve.
 - **Live**: a note changed elsewhere (another device, an agent) reloads
   in the editor unless it has edits.
+- **Conflicts** (`NotesConflictBar`): a note changed on two devices while
+  apart — iCloud keeps one and the others as `NSFileVersion`s — shows a
+  bar under the editor: Keep This One (saved first if it has edits), Use
+  Theirs (asked first if it has edits), Compare (their version in the
+  preview's place). The version kept is reloaded whatever its date: iCloud
+  may date it before the text loaded.
 - **Session**: `session.json`'s `notes` — the page in the strip or not,
   the vault, each vault's open notes. A key of its own, which an older
   version reads past.

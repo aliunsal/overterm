@@ -3980,6 +3980,35 @@ final class E2ERunner {
             "…and drawn in the preview", await eventually(3) { notes.preview.renderedText.string.contains("\u{FFFC}") },
             notes.preview.renderedText.string)
         editor.saveDocument(nil)
+
+        // Changed on two devices at once.
+        notes.open("Inbox.md")
+        _ = await eventually(3) { editor.active?.url?.lastPathComponent == "Inbox.md" }
+        let inboxURL = root.appendingPathComponent("Inbox.md")
+        try? cloud.addConflict(inboxURL, text: "# Inbox\n\nFrom the iPhone.\n", device: "Ali's iPhone")
+        index.refresh()
+        check("a conflict shows under the note", await eventually(3) { notes.conflict.versions.count == 1 })
+        notes.compare(notes.conflict.versions.first)
+        if let png = ProcessInfo.processInfo.environment["OVERTERM_DUMP_PNG"] {
+            await pause(0.8)
+            app.captureWindow(to: png.replacingOccurrences(of: ".png", with: "-conflict.png"))
+        }
+        check(
+            "Compare shows their version beside mine",
+            notes.preview.renderedText.string.contains("Ali's iPhone's version") && notes.preview.renderedText.string.contains("From the iPhone"),
+            notes.preview.renderedText.string)
+        if let theirs = notes.conflict.versions.first { notes.useTheirs(theirs) }
+        check("Use Theirs takes their text", editor.textView.string.contains("From the iPhone"), editor.textView.string)
+        check("…and settles it", notes.conflict.versions.isEmpty && !cloud.state(of: inboxURL).hasConflicts)
+
+        try? cloud.addConflict(inboxURL, text: "theirs again", device: "iPad")
+        index.refresh()
+        _ = await eventually(3) { notes.conflict.versions.count == 1 }
+        editor.textView.setSelectedRange(NSRange(location: (editor.textView.string as NSString).length, length: 0))
+        editor.textView.insertText("Mine wins.\n", replacementRange: editor.textView.selectedRange())
+        notes.keepMine()
+        let kept = (try? String(contentsOf: inboxURL, encoding: .utf8)) ?? ""
+        check("Keep This One saves my edits and settles it", kept.contains("Mine wins.") && notes.conflict.versions.isEmpty && editor.unsavedNames.isEmpty, kept)
     }
 
     /// Settings (⌘,): a tab, as Warp's; settings.json behind it, as VS

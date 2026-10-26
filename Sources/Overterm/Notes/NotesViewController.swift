@@ -18,6 +18,9 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     let showing = NotesShowing()
     /// The sidebar's mode and its search.
     let sidebarState = NotesSidebarState()
+    /// The note showing, changed on two devices at once.
+    let conflict = NotesConflict()
+    private var conflictBar: NSView!
     var actions: NotesSidebarActions?
 
     private(set) var preview: MarkdownPreviewView!
@@ -150,7 +153,15 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         empty.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel = empty
 
-        for view in [split, welcome, download, empty] as [NSView] { root.addSubview(view) }
+        let conflictBar = NSHostingView(
+            rootView: NotesConflictBar(
+                conflict: conflict, theme: chrome, keepMine: { [weak self] in self?.keepMine() },
+                useTheirs: { [weak self] in self?.useTheirs($0) }, compare: { [weak self] in self?.compare($0) }))
+        conflictBar.translatesAutoresizingMaskIntoConstraints = false
+        conflictBar.isHidden = true
+        self.conflictBar = conflictBar
+
+        for view in [split, welcome, download, empty, conflictBar] as [NSView] { root.addSubview(view) }
         NSLayoutConstraint.activate([
             split.topAnchor.constraint(equalTo: root.topAnchor),
             split.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -165,6 +176,10 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
             download.widthAnchor.constraint(lessThanOrEqualTo: editor.view.widthAnchor, constant: -40),
             empty.centerXAnchor.constraint(equalTo: editor.view.centerXAnchor),
             empty.centerYAnchor.constraint(equalTo: editor.view.centerYAnchor),
+            // Over the foot of the editor, above its status bar.
+            conflictBar.leadingAnchor.constraint(equalTo: editor.view.leadingAnchor),
+            conflictBar.trailingAnchor.constraint(equalTo: editor.view.trailingAnchor),
+            conflictBar.bottomAnchor.constraint(equalTo: editor.view.bottomAnchor, constant: -26),
         ])
         view = root
 
@@ -271,6 +286,7 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     private func vaultFilesChanged() {
         editor.reloadIfChangedOnDisk()
         if sidebarState.mode == .search { runSearch() }
+        updateConflict()
         for buffer in editor.buffers where !buffer.document.isDirty {
             guard let url = buffer.url, !FileManager.default.fileExists(atPath: url.path) else { continue }
             editor.filesRemoved(at: url)
@@ -348,6 +364,70 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
             let paths = editor.buffers.compactMap { $0.url.flatMap(workspace.path(for:)) }
             workspace.notesShown(paths, selected: buffer?.url.flatMap(workspace.path(for:)))
         }
+        conflict.comparing = nil
+        updateConflict()
+        refreshPreview()
+    }
+
+    // MARK: Conflicts
+
+    /// Asks iCloud whether the note showing has versions from another
+    /// device; the bar under the editor while it does.
+    func updateConflict() {
+        let url = editor.active?.url
+        let versions = url.map { workspace.files.state(of: $0).hasConflicts ? workspace.files.conflicts(of: $0) : [] } ?? []
+        if versions != conflict.versions { conflict.versions = versions }
+        if versions.isEmpty, conflict.comparing != nil {
+            conflict.comparing = nil
+            refreshPreview()
+        }
+        conflictBar.isHidden = versions.isEmpty
+    }
+
+    /// This Mac's text wins (saved first if it has edits); the others go.
+    func keepMine() {
+        guard let buffer = editor.active, let url = buffer.url else { return }
+        if buffer.document.isDirty {
+            editor.save(buffer, overwriting: true)
+            guard !buffer.document.isDirty else { return }
+        }
+        resolve(url, keeping: nil)
+    }
+
+    /// The other device's text replaces this one — after asking, if this
+    /// one has unsaved edits.
+    func useTheirs(_ version: ConflictVersion) {
+        guard let buffer = editor.active, let url = buffer.url else { return }
+        guard buffer.document.isDirty, let window = view.window else { return resolve(url, keeping: version) }
+        let alert = NSAlert()
+        alert.messageText = "Use \(version.device ?? "the other device")'s version?"
+        alert.informativeText = "Your unsaved changes to “\(buffer.name)” will be lost."
+        alert.addButton(withTitle: "Use Theirs")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self else { return }
+            self.resolve(url, keeping: version)
+        }
+    }
+
+    private func resolve(_ url: URL, keeping version: ConflictVersion?) {
+        do {
+            try workspace.files.resolveConflicts(of: url, keeping: version)
+        } catch {
+            if let window = view.window { NSAlert(error: error).beginSheetModal(for: window) }
+            return
+        }
+        conflict.comparing = nil
+        if let buffer = editor.buffers.first(where: { $0.url?.standardizedFileURL == url.standardizedFileURL }) { editor.reload(buffer) }
+        if let path = workspace.path(for: url), let text = try? workspace.files.readText(url) { workspace.index?.written(path, text: text) }
+        updateConflict()
+        refreshPreview()
+    }
+
+    /// Their version beside yours, in the preview's place (nil: back).
+    func compare(_ version: ConflictVersion?) {
+        conflict.comparing = version
+        if !showsPreview { togglePreview() }
         refreshPreview()
     }
 
@@ -367,6 +447,11 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         guard showsPreview else { return }
         let buffer = editor.active
         preview.baseURL = buffer?.url
+        if let theirs = conflict.comparing {
+            let text = (try? workspace.files.readText(theirs.url)) ?? ""
+            preview.show("> **\(theirs.device ?? "The other device")'s version**\n\n" + NoteRendering.markdown(text))
+            return
+        }
         let text = buffer?.document.unavailable == nil ? buffer?.storage.string ?? "" : ""
         preview.show(NoteRendering.markdown(text))
     }

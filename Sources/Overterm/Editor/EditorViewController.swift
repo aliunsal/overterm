@@ -488,20 +488,28 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// edits of your own.
     func reloadIfChangedOnDisk() {
         for buffer in buffers {
-            guard let url = buffer.url, buffer.document.changedOnDisk, !buffer.document.isDirty else { continue }
-            let isActive = buffer === active
-            let selection = isActive ? textView.selectedRange() : buffer.selection.first ?? NSRange(location: 0, length: 0)
-            buffer.document.load(url)
-            buffer.setText(buffer.document.text, attributes: baseAttributes)
-            buffer.request?.textChanged(buffer.storage.string)
-            buffer.selection = [NSRange(location: min(selection.location, buffer.storage.length), length: 0)]
-            bufferDidReload(buffer)
-            if isActive {
-                textView.setSelectedRange(buffer.selection[0])
-                gutter.textDidChange()
-                paintVisible()
-                updatePreview()
-            }
+            guard buffer.document.changedOnDisk, !buffer.document.isDirty else { continue }
+            reload(buffer)
+        }
+    }
+
+    /// The file's text again, edits or not, where you were kept — a
+    /// conflict settled by iCloud's version, whose date may be older than
+    /// the one loaded.
+    func reload(_ buffer: EditorBuffer) {
+        guard let url = buffer.url else { return }
+        let isActive = buffer === active
+        let selection = isActive ? textView.selectedRange() : buffer.selection.first ?? NSRange(location: 0, length: 0)
+        buffer.document.load(url)
+        buffer.setText(buffer.document.text, attributes: baseAttributes)
+        buffer.request?.textChanged(buffer.storage.string)
+        buffer.selection = [NSRange(location: min(selection.location, buffer.storage.length), length: 0)]
+        bufferDidReload(buffer)
+        if isActive {
+            textView.setSelectedRange(buffer.selection[0])
+            gutter.textDidChange()
+            paintVisible()
+            updatePreview()
         }
     }
 
