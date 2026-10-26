@@ -32,6 +32,11 @@ final class BrowserBridge {
     var isServing: Bool { port != nil && wanted }
 
     /// Starts listening (once); the config files of an earlier run go.
+    ///
+    /// Waits — briefly — for the port: the panes the session restores are
+    /// made right after, at launch, and a pane learns the address only as
+    /// it is made. Published a turn later, as it was, no pane made at
+    /// launch had it and no Claude resumed there got `--mcp-config`.
     func start() {
         guard server == nil, wanted else { return }
         try? FileManager.default.removeItem(at: configDirectory)
@@ -39,9 +44,19 @@ final class BrowserBridge {
             await self?.handle(tag: tag, message: message)
         }
         self.server = server
+        let listening = DispatchSemaphore(value: 0)
+        let ready = ReadyPort()
         server.start { [weak self] port in
-            MainActor.assumeIsolated { self?.port = port }
+            ready.set(port)
+            listening.signal()
+            // Late (the wait gave up): it still arrives.
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    if self?.server === server { self?.port = port }
+                }
+            }
         }
+        if listening.wait(timeout: .now() + 2) == .success { port = ready.port }
     }
 
     /// Serving exactly while Settings gives agents something.
@@ -90,6 +105,24 @@ final class BrowserBridge {
     }
 }
 
+/// The port, from the listener's queue to the main thread waiting for it.
+private final class ReadyPort: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: UInt16?
+
+    func set(_ port: UInt16) {
+        lock.lock()
+        value = port
+        lock.unlock()
+    }
+
+    var port: UInt16? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
 /// HTTP/1.1 on a Network.framework listener, just enough for MCP's
 /// streamable HTTP: POST a JSON-RPC message, get JSON back (202 for a
 /// notification); GET (a server-sent stream) is declined with 405, which
@@ -106,6 +139,8 @@ final class BridgeServer: @unchecked Sendable {
         self.handler = handler
     }
 
+    /// `ready` is called on the listener's queue, not the main one: the
+    /// main thread may be waiting for it (BrowserBridge.start).
     func start(ready: @escaping @Sendable (UInt16) -> Void) {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
@@ -113,9 +148,7 @@ final class BridgeServer: @unchecked Sendable {
         guard let listener = try? NWListener(using: parameters) else { return }
         self.listener = listener
         listener.stateUpdateHandler = { [weak listener] state in
-            if case .ready = state, let port = listener?.port?.rawValue {
-                DispatchQueue.main.async { ready(port) }
-            }
+            if case .ready = state, let port = listener?.port?.rawValue { ready(port) }
         }
         listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
         listener.start(queue: queue)

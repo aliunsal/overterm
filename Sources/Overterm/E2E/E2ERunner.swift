@@ -773,6 +773,15 @@ final class E2ERunner {
         try? "<html><head><title>Second</title></head><body><h1>Second page</h1></body></html>"
             .write(to: scratch.appendingPathComponent("second.html"), atomically: true, encoding: .utf8)
         check("the bridge listens", await eventually(5) { BrowserBridge.shared.port != nil })
+        // The first pane was made at launch, right after the bridge
+        // started: it has the address too (it hadn't — the port came a
+        // turn later than the panes the session restores).
+        if let first = app.store.tabs.first {
+            let tag = first.terminal.processTag
+            let launched = AppEnvironment.supportDirectory.appendingPathComponent("mcp/\(tag).json")
+            let text = (try? String(contentsOf: launched, encoding: .utf8)) ?? ""
+            check("a pane made at launch gets its MCP config too", text.contains("/mcp/\(tag)"), text)
+        }
         // A tab made now has the bridge's address in its environment.
         app.newTab(nil)
         guard let tab = app.store.selected, let port = BrowserBridge.shared.port else { return check("a tab", false) }
