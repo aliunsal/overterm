@@ -19,8 +19,10 @@ Satır numaraları 2026-10-24'teki `main`'e göre (`fe846e0`).
   macOS yapar. Bize dört iş kalır: bulutta duran dosyalar, koordineli
   okuma/yazma, canlı yeniden yükleme ve çakışmalar.
 - **iPhone/iPad'de notlar Dosyalar uygulamasında görünür** (iCloud Drive ›
-  Overterm Notes); düz `.md` oldukları için orada açılıp düzenlenebilir.
-  Kendi iOS uygulamamız Apple Developer hesabı ister; kapsam dışı.
+  Overterm Notes). Dosyalar `.md`'yi gösterir ama düzenleyemez; düzenlemek
+  için dosyayı yerinde açan bir metin editörü gerekir (iA Writer, Runestone,
+  Textastic gibi). Kendi iOS uygulamamız Apple Developer hesabı ister;
+  kapsam dışı.
 - **En pahalı kısım "tab".** Bugün her `Tab` bir terminal. Settings'in
   kullandığı yolu izlemek (strip'te bir öğe, gövdeyi kaplayan bir görünüm)
   ucuz ve güvenli.

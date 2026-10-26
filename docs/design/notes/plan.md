@@ -191,6 +191,72 @@ Scratchpad'de küçük Swift programlarıyla; commit edilmez. iCloud Drive'da
 1, 4 ve 5'i tek başıma yapabilirim. 2 ve 3 için iPhone'unda birkaç adım
 gerekiyor.
 
+### Sonuçlar (2026-10-26, macOS 26.7.1)
+
+Entitlement'sız, ad-hoc derlenmiş bir probe ile `Overterm Spike` klasöründe.
+
+**1. Dataless okuma.**
+
+- `evictUbiquitousItem` entitlement'sız çalışıyor. Dosya `dataless` bayrağı
+  alıyor (`ls -O`: `compressed,dataless`), `fileAllocatedSize` 0 oluyor;
+  boyut, inode ve mtime aynı kalıyor.
+- Okumak, koordinasyonlu da koordinasyonsuz da (`Data(contentsOf:)`,
+  `.withoutChanges` ile de), dosyayı indiriyor ve bitene kadar çağıranı
+  bekletiyor. Bekleme dosya başına yaklaşık 1 s ve boyuttan bağımsız
+  (73 B da 266 KB de ~1.0 s). Ana thread'den çağrılınca ana thread o kadar
+  duruyor.
+- Ardışık okuma dosya başına 1 s (10 dosya 10 s). 20 paralel okuma 1.6 s'de
+  bitti. 40 dosya için tek seferde `startDownloadingUbiquitousItem` çağrısı
+  2.0 s'de hepsini indirdi.
+- Sonuç: indeks ve not açma hiçbir zaman ana thread'de okumaz. İndeks önce
+  bulutta duranların hepsi için indirmeyi başlatır, inmiş olanları okur,
+  kalanları indikçe okur.
+
+**4. Atomik yazma.**
+
+- `Data.write(.atomic)` koordinasyonlu da koordinasyonsuz da sorunsuz:
+  inode değişiyor; dosya yükleniyor; çakışma ya da ek `NSFileVersion`
+  oluşmuyor.
+- Dataless bir dosyanın üstüne `.forReplacing` ile koordinasyonlu yazma onu
+  önce indirmiyor (7 ms).
+- Atomik yazma dosyanın yanında geçici bir `<ad>.md.sb-<hash>-<rastgele>`
+  yaratıp yeniden adlandırıyor. İzleyici ve ağaç bu adları yok saymalı.
+
+**İzleyici (FSEvents ve `NSFilePresenter`).**
+
+- Eviction ve indirme FSEvents'te `modified` (ve `xattr`, `inodeMeta`,
+  `owner`) olarak geliyor. Yükleme bitince `xattr` olayı geliyor. Her olayda
+  yeniden okuyan bir indeks, sistemin buluta geri gönderdiği notları tekrar
+  indirir.
+- Sonuç: bir dosya ancak mtime'ı ya da boyutu indekstekinden farklıysa
+  değişmiş sayılır (`stat` dosyayı indirmez). Bulut durumu ayrıca okunur.
+- `NSFilePresenter` aynı değişiklikleri ~1 s sonra, daha az ayrıntıyla
+  söylüyor (yalnızca "subitem changed"). FSEvents yeterli.
+
+**5. Açılışta MCP.** Koddan kesin: `BrowserBridge.start()` portu
+`listener`'ın `ready` durumunda, `DispatchQueue.main.async` ile yayımlıyor.
+`applicationDidFinishLaunching` aynı turda `restore` ile panelleri kuruyor ve
+`TerminalView.init` `configPath(forPane:)`'i o sırada soruyor. Port henüz
+`nil` olduğu için açılışta kurulan paneller `OVERTERM_MCP_CONFIG` almıyor,
+restore edilen Claude da `--mcp-config` almıyor. Tarayıcı ve API araçlarını
+bugün de etkileyen bir hata; ayrı bir commit'te düzeltilir, bir check ile.
+
+**Codex (belgelerden, Codex bu makinede kurulu değil).**
+
+- URL'li (streamable HTTP) MCP sunucusu için feature flag gerekmiyor.
+- Sunucu çalıştırma başına `-c` ile verilebiliyor (dotted key'ler belgede
+  var): `-c 'mcp_servers.overterm.url="…"'`.
+- Token ortamdan okunabiliyor: `bearer_token_env_var`.
+- Sunucunun `instructions`'ını okuyor. Belge ilk 512 karakterin kendi
+  başına anlaşılır olmasını öneriyor.
+- Belgelenmemiş olanlar: yeni bir sunucu tablosunun yalnızca `-c` ile
+  kurulup kurulamadığı ve MCP araç çağrılarında varsayılan onay davranışı.
+  Codex kurulu bir makinede denenecek.
+
+**Düzeltme (analysis.md).** iOS'un Dosyalar uygulaması `.md`'yi Quick Look ile
+gösteriyor ama düzenleyemiyor. iPhone'da düzenlemek için dosyayı yerinde
+açan bir metin editörü gerekiyor (iA Writer, Runestone, Textastic gibi).
+
 ## 5. Kararlar (2026-10-26)
 
 1. **Codex de MCP alır,** MVP'de: üç araç grubu birden (tarayıcı, API,
