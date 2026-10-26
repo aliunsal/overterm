@@ -30,6 +30,29 @@ struct CompletionState {
     var shown: [Int] = []
     /// Answers for an older request are dropped.
     var generation: Int
+    /// The host's list (HostCompletion), ranked by it: asked again as the
+    /// text changes rather than filtered here.
+    var isHost = false
+    /// How many characters after the caret a choice replaces too.
+    var afterCaret = 0
+}
+
+/// A host's own completion (Notes' `[[`), asked before the language
+/// server and the file's words on every keystroke: where the replaced text
+/// starts, how much after the caret goes with it (a paired `]]`), and the
+/// rows, best first.
+struct HostCompletion {
+    struct Item {
+        var title: String
+        var insert: String
+        var detail: String = ""
+        var badge: String = ""
+        var matched: [Int] = []
+    }
+
+    var anchor: Int
+    var afterCaret: Int = 0
+    var items: [Item]
 }
 
 extension EditorViewController: CodeTextViewHost {
@@ -226,6 +249,7 @@ extension EditorViewController: CodeTextViewHost {
 
     private func didType(_ text: String) {
         guard let buffer = active, textView.selectedRanges.count == 1 else { return dismissCompletion() }
+        if askHostCompletion() { return }
         if let state = completion {
             if text.unicodeScalars.allSatisfy({ Self.isWordUnit(unichar(min($0.value, 0xFFFF))) }) {
                 // An incomplete list is the server's first answer, not its
@@ -301,7 +325,7 @@ extension EditorViewController: CodeTextViewHost {
     /// Re-ranks the list for the word as it now is; gone when the caret
     /// left the word or nothing matches.
     func refilterCompletion(manual: Bool = false) {
-        guard var state = completion else { return }
+        guard var state = completion, !state.isHost else { return }
         let text = textView.string as NSString
         let caret = textView.selectedRange().location
         guard textView.selectedRanges.count == 1, caret >= state.anchor, caret <= text.length else { return dismissCompletion() }
@@ -339,8 +363,44 @@ extension EditorViewController: CodeTextViewHost {
 
     func updateCompletionForSelection() {
         guard let state = completion else { return }
+        // The host's list follows the caret: asked again (a deletion), or gone.
+        if state.isHost {
+            if !askHostCompletion() { dismissCompletion() }
+            return
+        }
         let caret = textView.selectedRange().location
         if textView.selectedRanges.count != 1 || textView.selectedRange().length > 0 || caret < state.anchor { dismissCompletion() }
+    }
+
+    /// The host's completion for the caret, shown — true when it had one.
+    /// Leaving it (the caret out of a `[[`) drops its list.
+    @discardableResult
+    func askHostCompletion() -> Bool {
+        guard let source = completionSource, let buffer = active, textView.selectedRanges.count == 1, textView.selectedRange().length == 0
+        else { return false }
+        let caret = textView.selectedRange().location
+        guard let host = source(textView.string as NSString, caret) else {
+            if completion?.isHost == true { dismissCompletion() }
+            return false
+        }
+        guard !host.items.isEmpty, let window = view.window else {
+            dismissCompletion()
+            return true
+        }
+        completionRequests += 1
+        let candidates = host.items.map {
+            CompletionState.Candidate(
+                label: $0.title, filterText: $0.title, insertText: $0.insert, isSnippet: false, badge: $0.badge, badgeColor: theme.hint,
+                detail: $0.detail, edit: nil, additionalEdits: [], sortText: $0.title, fromServer: false)
+        }
+        var state = CompletionState(anchor: host.anchor, requestedAt: caret, buffer: buffer, candidates: candidates, generation: completionRequests)
+        state.isHost = true
+        state.afterCaret = host.afterCaret
+        state.shown = Array(candidates.indices)
+        completion = state
+        let items = host.items.map { EditorListItem(title: $0.title, detail: $0.detail, badge: $0.badge, badgeColor: theme.hint, matched: $0.matched) }
+        completionPopup.show(items, details: host.items.map(\.detail), at: textView.screenRect(forCharacterAt: host.anchor), in: window)
+        return true
     }
 
     func dismissCompletion() {
@@ -368,7 +428,7 @@ extension EditorViewController: CodeTextViewHost {
         dismissCompletion()
         let caret = textView.selectedRange().location
         var start = state.anchor
-        var end = caret
+        var end = min(caret + state.afterCaret, (textView.string as NSString).length)
         if let edit = candidate.edit {
             // The server's range is in the text it saw: what was typed since
             // (at the caret, inside the range) moves its end along.

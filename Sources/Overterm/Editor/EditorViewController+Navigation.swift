@@ -82,7 +82,8 @@ extension EditorViewController {
 
     // MARK: Pickers
 
-    private func showPicker(_ picker: EditorPicker) {
+    /// A picker over the editor's text; a host's own too (Notes' switcher).
+    func showPicker(_ picker: EditorPicker) {
         self.picker?.dismiss()
         picker.onDismiss = { [weak self, weak picker] in
             guard let self, self.picker === picker else { return }

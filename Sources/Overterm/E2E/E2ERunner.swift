@@ -3883,6 +3883,55 @@ final class E2ERunner {
         check("⌥⌘N brings it back with its notes", await eventually(3) { editor.buffers.count == 3 && editor.active?.url?.lastPathComponent == "Untitled.md" })
         app.toggleNotes(nil)
         check("…and ⌥⌘N again gives the terminal back", app.store.showingOverlay == nil && app.store.openOverlays == [.notes])
+
+        // Links.
+        app.toggleNotes(nil)
+        write("Links.md", "# Links\n\n[[Plan#Plan|the plan]] and [[Someday]] #idea\n")
+        check("a new note is indexed", await eventually(5) { index.entries["Links.md"]?.syntax != nil })
+        notes.open("Links.md")
+        check("…and opens", await eventually(3) { editor.active?.url?.lastPathComponent == "Links.md" })
+        let rendered = notes.preview.renderedText.string
+        check("the preview reads a link by its alias, not its brackets", rendered.contains("the plan") && !rendered.contains("[["), rendered)
+        _ = notes.followLink(URL(string: "overterm-note:Plan#Plan")!)
+        check("a link clicked opens its note", await eventually(3) { editor.active?.url?.lastPathComponent == "Plan.md" })
+        check("…which lists the backlink", index.backlinks(to: "Plan.md").contains { $0.source == "Links.md" })
+        if let png = ProcessInfo.processInfo.environment["OVERTERM_DUMP_PNG"] {
+            await pause(0.8)
+            app.captureWindow(to: png.replacingOccurrences(of: ".png", with: "-links.png"))
+        }
+        _ = notes.followLink(URL(string: "overterm-note:Someday")!)
+        check(
+            "a link to a note not written yet makes it",
+            await eventually(3) { editor.active?.url?.lastPathComponent == "Someday.md" }
+                && FileManager.default.fileExists(atPath: root.appendingPathComponent("Someday.md").path))
+        _ = notes.followLink(URL(string: "overterm-tag:idea")!)
+        check("a tag clicked lists its notes", editor.picker?.identifier?.rawValue == "notesTagged")
+        editor.picker?.dismiss()
+        notes.showSwitcher()
+        check("⌘O opens the switcher", editor.picker?.identifier?.rawValue == "notesSwitcher")
+        editor.picker?.dismiss()
+
+        // [[ completes a note's name.
+        notes.open("Links.md")
+        _ = await eventually(3) { editor.active?.url?.lastPathComponent == "Links.md" }
+        let end = (editor.textView.string as NSString).length
+        editor.textView.setSelectedRange(NSRange(location: end, length: 0))
+        editor.textView.insertText("See [[Pla", replacementRange: NSRange(location: end, length: 0))
+        editor.askHostCompletion()
+        check(
+            "[[ offers the vault's notes", editor.completion?.isHost == true && editor.completion?.candidates.first?.label == "Plan",
+            "\(editor.completion?.candidates.map(\.label) ?? [])")
+        editor.acceptCompletion(at: 0)
+        check("…and writes the link", editor.textView.string.hasSuffix("See [[Plan]]"), editor.textView.string)
+
+        // A rename rewrites the links to the note — in the editor, unsaved.
+        check("renaming a note", app.renameNote(at: root.appendingPathComponent("Plan.md"), to: "Master Plan") == nil)
+        check("…moves the file", FileManager.default.fileExists(atPath: root.appendingPathComponent("Master Plan.md").path))
+        check(
+            "…and its links follow, in the note open with edits",
+            editor.textView.string.contains("[[Master Plan#Plan|the plan]]") && editor.textView.string.hasSuffix("[[Master Plan]]"),
+            editor.textView.string)
+        editor.saveDocument(nil)
     }
 
     /// Settings (⌘,): a tab, as Warp's; settings.json behind it, as VS

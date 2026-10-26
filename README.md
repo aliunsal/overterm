@@ -191,7 +191,7 @@ The defaults; every one of them is rebindable in Settings ▸ Keyboard Shortcuts
 | ⌘L | Ask an agent about the selection |
 | ⌘F | Search the terminal and the files |
 | ⌘B / ⌥⌘D | Sidebar / changes |
-| ⌥⌘N / ⌘N | Notes / a new note, while they show |
+| ⌥⌘N / ⌘N / ⌘O | Notes / a new note / find or make one, while they show |
 | ⇧⌘E | Tab Peek (or three fingers down) |
 | ⌘, / ⌥⌘O | Settings / what's new |
 | ⌘-click | Open a printed `path:line` in the editor |

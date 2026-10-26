@@ -3354,7 +3354,7 @@ extension TerminalWindowController: NSMenuItemValidation {
         if menuItem.action == #selector(toggleNotes(_:)) {
             menuItem.state = store.showingOverlay == .notes ? .on : .off
         }
-        if menuItem.action == #selector(newNote(_:)) {
+        if menuItem.action == #selector(newNote(_:)) || menuItem.action == #selector(openNoteSwitcher(_:)) {
             return store.showingOverlay == .notes && notesWorkspace.vault != nil
         }
         if menuItem.action == #selector(toggleTabPeek(_:)) {

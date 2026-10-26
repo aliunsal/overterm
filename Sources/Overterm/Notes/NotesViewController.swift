@@ -19,6 +19,7 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     var actions: NotesSidebarActions?
 
     private(set) var preview: MarkdownPreviewView!
+    private var backlinks: NSView!
     private var split: NSSplitView!
     private var sidebar: NSView!
     private var previewPane: NSView!
@@ -69,21 +70,40 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         editor.onClose = { [weak self] in self?.editorShowsAnother() }
         addChild(editor)
 
+        editor.completionSource = { [weak self] text, caret in self?.completion(in: text, caret: caret) }
+
         let preview = MarkdownPreviewView(theme: editor.theme)
         // Under the title bar's safe area, as the page is: no inset for it.
         preview.automaticallyAdjustsContentInsets = false
         preview.contentInsets = NSEdgeInsetsZero
         preview.onOpenFile = { [weak self] url in self?.openFile(url) }
+        preview.onLink = { [weak self] url in self?.followLink(url) ?? false }
         self.preview = preview
+        let backlinks = NSHostingView(
+            rootView: NotesBacklinksView(
+                workspace: workspace, showing: showing, theme: chrome,
+                open: { [weak self] path, range in self?.open(path, revealing: range) }))
+        backlinks.translatesAutoresizingMaskIntoConstraints = false
+        self.backlinks = backlinks
+        let rule = NSBox()
+        rule.boxType = .separator
+        rule.translatesAutoresizingMaskIntoConstraints = false
         let previewPane = NSView()
         previewPane.wantsLayer = true
         preview.translatesAutoresizingMaskIntoConstraints = false
-        previewPane.addSubview(preview)
+        for view in [preview, rule, backlinks] as [NSView] { previewPane.addSubview(view) }
         NSLayoutConstraint.activate([
             preview.topAnchor.constraint(equalTo: previewPane.topAnchor),
-            preview.bottomAnchor.constraint(equalTo: previewPane.bottomAnchor),
             preview.leadingAnchor.constraint(equalTo: previewPane.leadingAnchor),
             preview.trailingAnchor.constraint(equalTo: previewPane.trailingAnchor),
+            rule.topAnchor.constraint(equalTo: preview.bottomAnchor),
+            rule.leadingAnchor.constraint(equalTo: previewPane.leadingAnchor),
+            rule.trailingAnchor.constraint(equalTo: previewPane.trailingAnchor),
+            backlinks.topAnchor.constraint(equalTo: rule.bottomAnchor),
+            backlinks.leadingAnchor.constraint(equalTo: previewPane.leadingAnchor),
+            backlinks.trailingAnchor.constraint(equalTo: previewPane.trailingAnchor),
+            backlinks.bottomAnchor.constraint(equalTo: previewPane.bottomAnchor),
+            backlinks.heightAnchor.constraint(equalToConstant: 190),
         ])
         self.previewPane = previewPane
 
@@ -251,7 +271,7 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
 
     /// A file of the vault, in the editor — downloaded first if it is only
     /// in iCloud. Not a note (an image, a PDF): the app the Mac opens it with.
-    func openFile(_ url: URL) {
+    func openFile(_ url: URL, then opened: (() -> Void)? = nil) {
         guard NoteLinks.isNote(url.lastPathComponent) else {
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
             return
@@ -264,13 +284,16 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
             emptyLabel.isHidden = true
             editor.view.isHidden = true
             workspace.files.startDownloading([url])
-            waitForDownload(url, since: Date())
+            waitForDownload(url, since: Date(), then: opened)
             return
         }
         downloading = nil
         downloadLabel.isHidden = true
         editor.view.isHidden = false
-        editor.open(url) { [weak self] _ in self?.editor.focus() }
+        editor.open(url) { [weak self] ok in
+            self?.editor.focus()
+            if ok { opened?() }
+        }
     }
 
     /// macOS 13 keeps a note only in iCloud as `.Note.md.icloud` beside
@@ -285,15 +308,15 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     }
 
     /// Looks again until iCloud has it (or a minute has gone).
-    private func waitForDownload(_ url: URL, since start: Date) {
+    private func waitForDownload(_ url: URL, since start: Date, then opened: (() -> Void)?) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self, self.downloading != nil, self.workspace.path(for: url) == self.downloading else { return }
-            if !self.isOnlyInICloud(url) { return self.openFile(url) }
+            if !self.isOnlyInICloud(url) { return self.openFile(url, then: opened) }
             if Date().timeIntervalSince(start) > 60 {
                 self.downloadLabel.stringValue = "“\(NoteLinks.name(of: url.lastPathComponent))” didn't come down from iCloud. Is this Mac online?"
                 return
             }
-            self.waitForDownload(url, since: start)
+            self.waitForDownload(url, since: start, then: opened)
         }
     }
 
@@ -333,7 +356,163 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         guard showsPreview else { return }
         let buffer = editor.active
         preview.baseURL = buffer?.url
-        preview.show(buffer?.document.unavailable == nil ? buffer?.storage.string ?? "" : "")
+        let text = buffer?.document.unavailable == nil ? buffer?.storage.string ?? "" : ""
+        preview.show(NoteRendering.markdown(text))
+    }
+
+    /// The note showing, by its path in the vault.
+    var currentPath: String? { editor.active?.url.flatMap(workspace.path(for:)) }
+
+    // MARK: Links
+
+    /// A link clicked in the preview: a note's (opened, or made when it
+    /// isn't written yet, as Obsidian does), a tag's (the notes with it).
+    func followLink(_ url: URL) -> Bool {
+        if let tag = NoteRendering.tag(of: url) {
+            showTagged(tag)
+            return true
+        }
+        guard let link = NoteRendering.target(of: url) else { return false }
+        follow(link.target, heading: link.heading)
+        return true
+    }
+
+    func follow(_ target: String, heading: String? = nil) {
+        guard let index = workspace.index, let root = workspace.root else { return }
+        let source = currentPath ?? ""
+        if let path = index.links.resolve(target, style: .wiki, from: source) {
+            return open(path, heading: heading)
+        }
+        guard !target.isEmpty else { return }
+        // Not written yet: made — beside the vault's new notes, or where the
+        // link's own path says.
+        let file = NoteLinks.isNote(target) ? target : target + ".md"
+        let folder = target.contains("/") ? root : (workspace.newNotesFolder ?? root)
+        guard let made = try? workspace.newNote(in: folder.appendingPathComponent(file).deletingLastPathComponent(), named: (file as NSString).lastPathComponent)
+        else { return }
+        workspace.tree.reload()
+        openFile(made)
+    }
+
+    /// A note, at a heading (or a `^block`) if one is named.
+    func open(_ path: String, heading: String?) {
+        guard let url = workspace.url(for: path) else { return }
+        openFile(url) { [weak self] in
+            guard let self, let heading, let buffer = self.editor.active else { return }
+            let syntax = NoteSyntax.parse(buffer.storage.string)
+            let wanted = heading.lowercased()
+            if wanted.hasPrefix("^") {
+                let marker = " " + wanted
+                let text = buffer.storage.string as NSString
+                let found = text.range(of: marker, options: .caseInsensitive)
+                if found.location != NSNotFound { self.editor.reveal(text.lineRange(for: found), flash: true) }
+            } else if let match = syntax.headings.first(where: { $0.text.lowercased() == wanted }) {
+                self.editor.reveal(match.range, flash: true)
+            }
+        }
+    }
+
+    /// A note with `range` selected (a backlink's link).
+    func open(_ path: String, revealing range: NSRange) {
+        guard let url = workspace.url(for: path) else { return }
+        openFile(url) { [weak self] in
+            guard let self, let buffer = self.editor.active, NSMaxRange(range) <= buffer.storage.length else { return }
+            self.editor.reveal(range, flash: true)
+        }
+    }
+
+    /// `[[` in the editor: the vault's notes (or files, after `![[`).
+    private func completion(in text: NSString, caret: Int) -> HostCompletion? {
+        guard let index = workspace.index, let source = currentPath, let context = NoteCompletion.context(in: text, caret: caret) else { return nil }
+        let suggestions = NoteCompletion.suggestions(
+            for: context, files: Array(index.entries.keys), aliases: index.aliases, links: index.links, from: source)
+        return HostCompletion(
+            anchor: context.anchor, afterCaret: context.isClosed ? 2 : 0,
+            items: suggestions.map {
+                HostCompletion.Item(
+                    title: $0.title, insert: $0.insert, detail: $0.detail, badge: NoteLinks.isNote($0.title) || !$0.title.contains(".") ? "md" : "file",
+                    matched: $0.matched)
+            })
+    }
+
+    // MARK: Switching
+
+    /// ⌘O: a note by name (or alias); a name no note has makes one.
+    func showSwitcher() {
+        guard let index = workspace.index else { return }
+        var rows: [String?] = []
+        let picker = EditorPicker(
+            placeholder: "Find a note, or name a new one", theme: editor.theme, showsList: true,
+            provider: { [weak self] query in
+                guard let self else { return [] }
+                let ranked = Self.rank(index: index, query: query, open: self.editor.buffers.compactMap { $0.url.flatMap(self.workspace.path(for:)) })
+                rows = ranked.map(\.path)
+                var items = ranked.map { EditorListItem(title: $0.title, detail: $0.detail, badge: "md", matched: $0.matched) }
+                let trimmed = query.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty, !ranked.contains(where: { $0.title.compare(trimmed, options: .caseInsensitive) == .orderedSame }) {
+                    rows.append(nil)
+                    items.append(EditorListItem(title: "Create “\(trimmed)”", detail: "a new note", badge: "+"))
+                }
+                return items
+            },
+            choose: { [weak self] row, text in
+                guard let self else { return }
+                let name = text.trimmingCharacters(in: .whitespaces)
+                if rows.indices.contains(row), let path = rows[row] {
+                    self.open(path, heading: nil)
+                } else if !name.isEmpty {
+                    self.follow(name)
+                }
+            })
+        picker.identifier = NSUserInterfaceItemIdentifier("notesSwitcher")
+        editor.view.isHidden = false
+        editor.showPicker(picker)
+    }
+
+    /// The switcher's rows: open notes first while nothing is typed, then
+    /// by how well the name (or an alias) matches.
+    static func rank(index: NoteIndex, query: String, open: [String]) -> [(path: String, title: String, detail: String, matched: [Int])] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        let notes = index.notes.map(\.path)
+        if query.isEmpty {
+            let rest = notes.filter { !open.contains($0) }
+            return (open.reversed() + rest).prefix(100).map { ($0, NoteLinks.name(of: $0), NoteLinks.folder(of: $0), []) }
+        }
+        let aliases = index.aliases
+        var scored: [(score: Int, row: (path: String, title: String, detail: String, matched: [Int]))] = []
+        for path in notes {
+            let name = NoteLinks.name(of: path)
+            if let match = CompletionMatch.score(candidate: name, query: query) {
+                scored.append((match.score + 4, (path, name, NoteLinks.folder(of: path), match.matched)))
+            }
+            for alias in aliases[path] ?? [] {
+                if let match = CompletionMatch.score(candidate: alias, query: query) {
+                    scored.append((match.score, (path, alias, "→ \(name)", match.matched)))
+                }
+            }
+        }
+        scored.sort { $0.score != $1.score ? $0.score > $1.score : $0.row.title.count < $1.row.title.count }
+        return scored.prefix(100).map(\.row)
+    }
+
+    /// A tag clicked: the notes that have it (or a tag under it).
+    func showTagged(_ tag: String) {
+        guard let index = workspace.index else { return }
+        let paths = index.notes(tagged: tag)
+        let picker = EditorPicker(
+            placeholder: "#\(tag) — \(paths.count) note\(paths.count == 1 ? "" : "s")", theme: editor.theme, showsList: true,
+            provider: { query in
+                paths.filter { query.isEmpty || NoteLinks.name(of: $0).localizedCaseInsensitiveContains(query) }
+                    .map { EditorListItem(title: NoteLinks.name(of: $0), detail: NoteLinks.folder(of: $0), badge: "#") }
+            },
+            choose: { [weak self] row, query in
+                let shown = paths.filter { query.isEmpty || NoteLinks.name(of: $0).localizedCaseInsensitiveContains(query) }
+                guard let self, shown.indices.contains(row) else { return }
+                self.open(shown[row], heading: nil)
+            })
+        picker.identifier = NSUserInterfaceItemIdentifier("notesTagged")
+        editor.view.isHidden = false
+        editor.showPicker(picker)
     }
 
     /// ⇧⌘V: the preview beside the editor, or the editor alone.

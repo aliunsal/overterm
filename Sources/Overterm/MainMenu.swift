@@ -37,6 +37,7 @@ enum MainMenu {
         command(fileMenu, "New Task…", #selector(TerminalWindowController.newTask(_:)), "tasks.new")
         // While the Notes page shows (validateMenuItem).
         command(fileMenu, "New Note", #selector(TerminalWindowController.newNote(_:)), "notes.new")
+        command(fileMenu, "Open Note…", #selector(TerminalWindowController.openNoteSwitcher(_:)), "notes.open")
         fileMenu.addItem(
             withTitle: "Clean Up Merged Worktrees…", action: #selector(TerminalWindowController.cleanUpMergedWorktrees(_:)), keyEquivalent: "")
         fileMenu.addItem(withTitle: "Pin / Unpin Tab", action: #selector(TerminalWindowController.togglePinTab(_:)), keyEquivalent: "")

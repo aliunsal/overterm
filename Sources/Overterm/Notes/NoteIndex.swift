@@ -182,8 +182,28 @@ final class NoteIndex: ObservableObject {
 
     /// What renaming `old` to `new` rewrites in the notes (NoteLinks).
     func renameEdits(old: String, new: String) -> [String: [NoteLinks.Edit]] {
-        let links = entries.compactMapValues { $0.syntax?.links }
-        return NoteLinks.renameEdits(old: old, new: new, files: Array(entries.keys), links: links)
+        renameEdits(moves: [old: new])
+    }
+
+    /// The same for several at once (a folder's notes); `overriding` gives
+    /// a note's links as an editor has it, unsaved, instead of as read.
+    func renameEdits(moves: [String: String], overriding: [String: [NoteSyntax.Link]] = [:]) -> [String: [NoteLinks.Edit]] {
+        var links = entries.compactMapValues { $0.syntax?.links }
+        links.merge(overriding) { _, edited in edited }
+        return NoteLinks.renameEdits(moves: moves, files: Array(entries.keys), links: links)
+    }
+
+    /// Each note's aliases (frontmatter), for completion and the switcher.
+    var aliases: [String: [String]] {
+        entries.compactMapValues { $0.syntax?.frontmatter?.aliases }.filter { !$0.value.isEmpty }
+    }
+
+    /// The line a link is on, trimmed: a backlink's context.
+    func context(of link: NoteSyntax.Link, in source: String) -> String {
+        guard let text = entries[source]?.text else { return "" }
+        let ns = text as NSString
+        guard NSMaxRange(link.range) <= ns.length else { return "" }
+        return ns.substring(with: ns.lineRange(for: link.range)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The note at `path` as just saved from here: indexed now, without

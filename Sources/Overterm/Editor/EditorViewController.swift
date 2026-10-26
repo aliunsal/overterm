@@ -29,6 +29,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         didSet { header?.showControls(zoom: showsZoom, close: showsClose) }
     }
     var usesGit = true
+    /// The host's own completion, asked first as you type (Notes' `[[`):
+    /// the text and the caret in, a list or nil out.
+    var completionSource: ((NSString, Int) -> HostCompletion?)?
     /// What the editor shows changed: another file, none, the same one
     /// reloaded.
     var onShowing: ((EditorBuffer?) -> Void)?

@@ -1036,6 +1036,18 @@ notes stay portable.
 - **The index** (`NoteIndex`): every note read in the background, kept
   current from FSEvents — backlinks, tags, the text to search. A note
   saved here is indexed at once.
+- **Links in the page**: the preview renders a note through
+  `NoteRendering` (pure) — wikilinks and tags become `overterm-note:` and
+  `overterm-tag:` links the page takes (`MarkdownPreviewView.onLink`),
+  comments and frontmatter go, a single line break breaks the line as in
+  Obsidian. A link to a note not written yet makes it; one with a heading
+  opens there; a tag lists its notes. Under the preview, the notes that
+  link here, each with its line. `[[` completes a note's name (or an
+  alias; after `![[`, any file) through the editor's `completionSource`,
+  writing the shortest target that resolves back (`NoteCompletion`, pure);
+  ⌘O finds a note by name or makes one. Renaming a note — or a folder —
+  rewrites every link to what moved, in notes open with edits as an undoable
+  edit to the editor's text, else in the file.
 - **Live**: a note changed elsewhere (another device, an agent) reloads
   in the editor unless it has edits.
 - **Session**: `session.json`'s `notes` — the page in the strip or not,

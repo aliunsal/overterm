@@ -273,6 +273,9 @@ final class MarkdownPreviewView: NSScrollView, NSTextViewDelegate {
     private var lastMarkdown = ""
     /// A link to a file beside this one (`CLAUDE.md`, `docs/x.md#part`).
     var onOpenFile: ((URL) -> Void)?
+    /// Asked first about every link clicked: true when the host took it
+    /// (Notes' `overterm-note:` and `overterm-tag:`).
+    var onLink: ((URL) -> Bool)?
     var baseURL: URL?
 
     init(theme: EditorTheme) {
@@ -323,6 +326,7 @@ final class MarkdownPreviewView: NSScrollView, NSTextViewDelegate {
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
         let url = (link as? URL) ?? (link as? String).flatMap { URL(string: $0) }
         guard let url else { return false }
+        if let onLink, onLink(url) { return true }
         if let scheme = url.scheme, ["http", "https", "mailto"].contains(scheme) {
             NSWorkspace.shared.open(url)
             return true

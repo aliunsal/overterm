@@ -166,15 +166,22 @@ struct NoteLinks {
     /// note's relative links can lose. Edits come in text order; apply
     /// them from the last.
     static func renameEdits(old: String, new: String, files: [String], links: [String: [NoteSyntax.Link]]) -> [String: [Edit]] {
+        renameEdits(moves: [old: new], files: files, links: links)
+    }
+
+    /// The same for several files at once — a folder's, moved together.
+    static func renameEdits(moves: [String: String], files: [String], links: [String: [NoteSyntax.Link]]) -> [String: [Edit]] {
+        let byKey = Dictionary(moves.map { (key($0.key), $0.value) }, uniquingKeysWith: { first, _ in first })
+        func moved(_ path: String) -> String { byKey[key(path)] ?? path }
         let before = NoteLinks(files: files)
-        let after = NoteLinks(files: files.map { key($0) == key(old) ? new : $0 })
+        let after = NoteLinks(files: files.map(moved))
         var result: [String: [Edit]] = [:]
         for (source, sourceLinks) in links {
-            let moved = key(source) == key(old) ? new : source
+            let moved = moved(source)
             var edits: [Edit] = []
             for link in sourceLinks where !link.target.trimmingCharacters(in: .whitespaces).isEmpty {
                 guard let was = before.resolve(link, from: source) else { continue }
-                let wanted = key(was) == key(old) ? new : was
+                let wanted = byKey[key(was)] ?? was
                 if let now = after.resolve(link, from: moved), key(now) == key(wanted) { continue }
                 let replacement =
                     link.style == .wiki

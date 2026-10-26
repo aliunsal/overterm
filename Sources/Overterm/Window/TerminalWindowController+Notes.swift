@@ -46,6 +46,12 @@ extension TerminalWindowController {
         newNote(in: nil)
     }
 
+    /// ⌘O while Notes shows: a note by name, or a new one.
+    @objc func openNoteSwitcher(_ sender: Any?) {
+        guard store.showingOverlay == .notes else { return }
+        notes?.showSwitcher()
+    }
+
     var notesSessionState: NotesState? {
         let isOpen = store.openOverlays.contains(.notes)
         guard isOpen || notesWorkspace.vault != nil else { return nil }
@@ -136,22 +142,32 @@ extension TerminalWindowController {
         }
     }
 
-    /// A note keeps its `.md` when renamed without one.
+    /// Asks for a name, then renames (renameNote).
     func renameNoteItem(_ url: URL) {
         let isNote = NoteLinks.isNote(url.lastPathComponent)
         let shown = isNote ? NoteLinks.name(of: url.lastPathComponent) : url.lastPathComponent
         askForName(title: "Rename", detail: url.lastPathComponent, initial: shown, action: "Rename") { [weak self] typed in
-            guard let self else { return nil }
-            let name = isNote && !NoteLinks.isNote(typed) ? typed + ".md" : typed
-            guard name != url.lastPathComponent else { return nil }
-            let target = url.deletingLastPathComponent().appendingPathComponent(name)
-            if name.lowercased() != url.lastPathComponent.lowercased(), let problem = Self.nameProblem(name, at: target) { return problem }
-            do { try self.notesWorkspace.files.move(url, to: target) } catch { return error.localizedDescription }
-            self.notes?.editor.filesMoved(from: url, to: target)
-            self.notesWorkspace.tree.reload()
-            self.notesWorkspace.index?.refresh()
-            return nil
+            self?.renameNote(at: url, to: typed)
         }
+    }
+
+    /// A note keeps its `.md` when renamed without one; the links to it —
+    /// to anything in a folder renamed — follow it in every note. Nil when
+    /// done, else why not.
+    @discardableResult
+    func renameNote(at url: URL, to typed: String) -> String? {
+        let isNote = NoteLinks.isNote(url.lastPathComponent)
+        let name = isNote && !NoteLinks.isNote(typed) ? typed + ".md" : typed
+        guard name != url.lastPathComponent else { return nil }
+        let target = url.deletingLastPathComponent().appendingPathComponent(name)
+        if name.lowercased() != url.lastPathComponent.lowercased(), let problem = Self.nameProblem(name, at: target) { return problem }
+        let edits = linkEdits(movingFrom: url, to: target)
+        do { try notesWorkspace.files.move(url, to: target) } catch { return error.localizedDescription }
+        notes?.editor.filesMoved(from: url, to: target)
+        applyLinkEdits(edits)
+        notesWorkspace.tree.reload()
+        notesWorkspace.index?.refresh()
+        return nil
     }
 
     func trashNoteItem(_ url: URL) {
@@ -182,6 +198,38 @@ extension TerminalWindowController {
             self.notesWorkspace.tree.reload()
             self.notesWorkspace.index?.refresh()
         }
+    }
+
+    /// What moving `url` (a note, or a folder of them) to `target`
+    /// rewrites, by note, keyed where each will be. A note open with
+    /// unsaved edits is read as the editor has it.
+    func linkEdits(movingFrom url: URL, to target: URL) -> [String: [NoteLinks.Edit]] {
+        guard let index = notesWorkspace.index, let old = notesWorkspace.path(for: url), let new = notesWorkspace.path(for: target) else { return [:] }
+        var moves: [String: String] = [:]
+        for path in index.entries.keys where path == old || path.hasPrefix(old + "/") {
+            moves[path] = new + path.dropFirst(old.count)
+        }
+        var edited: [String: [NoteSyntax.Link]] = [:]
+        for buffer in notes?.editor.buffers ?? [] where buffer.document.isDirty {
+            if let path = buffer.url.flatMap(notesWorkspace.path(for:)) { edited[path] = NoteSyntax.parse(buffer.storage.string).links }
+        }
+        return index.renameEdits(moves: moves, overriding: edited)
+    }
+
+    /// The edits written: into the editor for a note open with edits
+    /// (undoable, still unsaved), else to the file, through iCloud.
+    func applyLinkEdits(_ edits: [String: [NoteLinks.Edit]]) {
+        for (path, list) in edits {
+            guard let url = notesWorkspace.url(for: path) else { continue }
+            if let buffer = notes?.editor.buffers.first(where: { $0.url?.standardizedFileURL == url.standardizedFileURL }), buffer.document.isDirty {
+                notes?.editor.replaceText(of: buffer, with: NoteLinks.apply(list, to: buffer.storage.string))
+                continue
+            }
+            guard let text = try? notesWorkspace.files.readText(url) else { continue }
+            try? notesWorkspace.files.writeText(NoteLinks.apply(list, to: text), to: url)
+        }
+        // Open notes written underneath: in the editor now, not at the next event.
+        notes?.editor.reloadIfChangedOnDisk()
     }
 
     private func showNotesError(_ message: String, _ error: Error) {
