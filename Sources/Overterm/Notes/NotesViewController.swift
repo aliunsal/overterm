@@ -16,6 +16,8 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     let chrome: ChromeTheme
     /// What the tree shows selected.
     let showing = NotesShowing()
+    /// The sidebar's mode and its search.
+    let sidebarState = NotesSidebarState()
     var actions: NotesSidebarActions?
 
     private(set) var preview: MarkdownPreviewView!
@@ -71,6 +73,8 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         addChild(editor)
 
         editor.completionSource = { [weak self] text, caret in self?.completion(in: text, caret: caret) }
+        editor.onPaste = { [weak self] pasteboard in self?.paste(pasteboard) }
+        editor.onCommandClick = { [weak self] index in self?.followLink(at: index) ?? false }
 
         let preview = MarkdownPreviewView(theme: editor.theme)
         // Under the title bar's safe area, as the page is: no inset for it.
@@ -78,6 +82,7 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         preview.contentInsets = NSEdgeInsetsZero
         preview.onOpenFile = { [weak self] url in self?.openFile(url) }
         preview.onLink = { [weak self] url in self?.followLink(url) ?? false }
+        preview.image = { [weak self] url in self?.embeddedImage(url) }
         self.preview = preview
         let backlinks = NSHostingView(
             rootView: NotesBacklinksView(
@@ -171,13 +176,17 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] index in self?.observe(index) }
             .store(in: &cancellables)
+        sidebarState.$query
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.runSearch() }
+            .store(in: &cancellables)
         recolor()
         editorShowsAnother()
     }
 
     private var sidebarView: NotesSidebarView {
         NotesSidebarView(
-            workspace: workspace, vaults: workspace.vaults, tree: workspace.tree, theme: chrome, showing: showing,
+            workspace: workspace, vaults: workspace.vaults, tree: workspace.tree, theme: chrome, showing: showing, state: sidebarState,
             actions: NotesSidebarActions(
                 open: { [weak self] in self?.openFile($0) },
                 newNote: { [weak self] in self?.actions?.newNote($0) },
@@ -187,7 +196,8 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
                 switchVault: { [weak self] in self?.actions?.switchVault($0) },
                 addVault: { [weak self] in self?.actions?.addVault() },
                 createDefaultVault: { [weak self] in self?.actions?.createDefaultVault() },
-                removeVault: { [weak self] in self?.actions?.removeVault($0) }))
+                removeVault: { [weak self] in self?.actions?.removeVault($0) },
+                openAt: { [weak self] path, range in self?.open(path, revealing: range) }))
     }
 
     override func viewDidLayout() {
@@ -260,6 +270,7 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
     /// FSEvents through the index: a note open here changed or went.
     private func vaultFilesChanged() {
         editor.reloadIfChangedOnDisk()
+        if sidebarState.mode == .search { runSearch() }
         for buffer in editor.buffers where !buffer.document.isDirty {
             guard let url = buffer.url, !FileManager.default.fileExists(atPath: url.path) else { continue }
             editor.filesRemoved(at: url)
@@ -385,11 +396,12 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
         }
         guard !target.isEmpty else { return }
         // Not written yet: made — beside the vault's new notes, or where the
-        // link's own path says.
+        // link's own path says. Already there (the index a pass behind): opened.
         let file = NoteLinks.isNote(target) ? target : target + ".md"
         let folder = target.contains("/") ? root : (workspace.newNotesFolder ?? root)
-        guard let made = try? workspace.newNote(in: folder.appendingPathComponent(file).deletingLastPathComponent(), named: (file as NSString).lastPathComponent)
-        else { return }
+        let url = folder.appendingPathComponent(file)
+        if FileManager.default.fileExists(atPath: url.path) { return openFile(url) }
+        guard let made = try? workspace.newNote(in: url.deletingLastPathComponent(), named: url.lastPathComponent) else { return }
         workspace.tree.reload()
         openFile(made)
     }
@@ -433,6 +445,88 @@ final class NotesViewController: NSViewController, NSSplitViewDelegate {
                     title: $0.title, insert: $0.insert, detail: $0.detail, badge: NoteLinks.isNote($0.title) || !$0.title.contains(".") ? "md" : "file",
                     matched: $0.matched)
             })
+    }
+
+    /// ⌘-click on a link in the editor: followed, as in the preview.
+    func followLink(at index: Int) -> Bool {
+        guard let buffer = editor.active else { return false }
+        let syntax = NoteSyntax.parse(buffer.storage.string)
+        if let tag = syntax.tags.first(where: { NSLocationInRange(index, $0.range) }) {
+            showTagged(tag.name)
+            return true
+        }
+        guard let link = syntax.links.first(where: { NSLocationInRange(index, $0.range) }) else { return false }
+        if link.isEmbed, NoteRendering.isImage(link.target), let path = workspace.index?.links.resolve(link, from: currentPath ?? ""),
+            let url = workspace.url(for: path)
+        {
+            NSWorkspace.shared.open(url)
+            return true
+        }
+        if link.style == .markdown, let source = currentPath, let path = workspace.index?.links.resolve(link, from: source) {
+            open(path, heading: link.heading)
+            return true
+        }
+        follow(link.target, heading: link.heading ?? link.block.map { "^" + $0 })
+        return true
+    }
+
+    /// `![[shot.png]]` in the preview: the image, if it is on this Mac (one
+    /// only in iCloud is asked for, and drawn when it arrives).
+    private func embeddedImage(_ url: URL) -> NSImage? {
+        guard let target = NoteRendering.embed(of: url), let index = workspace.index,
+            let path = index.links.resolve(target, style: .wiki, from: currentPath ?? ""), let file = workspace.url(for: path)
+        else { return nil }
+        if isOnlyInICloud(file) {
+            workspace.files.startDownloading([file])
+            return nil
+        }
+        return NSImage(contentsOf: file)
+    }
+
+    /// ⌘V with an image (a screenshot, an image file copied in Finder):
+    /// kept in the vault's attachments, embedded where the caret is. Text
+    /// on the pasteboard pastes as text.
+    private func paste(_ pasteboard: NSPasteboard) -> String? {
+        guard workspace.vault != nil else { return nil }
+        // Files copied in Finder come with their names as text: files first.
+        let files = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        if !files.isEmpty {
+            guard files.allSatisfy({ NoteRendering.isImage($0.path) }) else { return nil }
+            let embeds = files.compactMap { file -> String? in
+                guard let data = try? Data(contentsOf: file),
+                    let path = try? workspace.saveAttachment(data, ext: file.pathExtension.lowercased(), named: file.deletingPathExtension().lastPathComponent)
+                else { return nil }
+                return "![[\(NoteLinks.name(of: path))]]"
+            }
+            workspace.tree.reload()
+            return embeds.isEmpty ? nil : embeds.joined(separator: "\n")
+        }
+        guard pasteboard.string(forType: .string) == nil else { return nil }
+        var png = pasteboard.data(forType: .png)
+        if png == nil, let tiff = pasteboard.data(forType: .tiff), let bitmap = NSBitmapImageRep(data: tiff) {
+            png = bitmap.representation(using: .png, properties: [:])
+        }
+        guard let png, let path = try? workspace.saveAttachment(png, ext: "png") else { return nil }
+        workspace.tree.reload()
+        return "![[\(NoteLinks.name(of: path))]]"
+    }
+
+    // MARK: Search
+
+    private func runSearch() {
+        guard let index = workspace.index else { return sidebarState.results = [] }
+        let notes = index.entries.values.compactMap { entry -> (path: String, text: String, tags: [String])? in
+            guard entry.isNote, let text = entry.text else { return nil }
+            return (entry.path, text, entry.syntax?.allTags ?? [])
+        }
+        let results = NoteSearch.search(sidebarState.query, notes: notes)
+        if results != sidebarState.results { sidebarState.results = results }
+    }
+
+    /// The sidebar on its search, the field ready.
+    func showSearch() {
+        sidebarState.mode = .search
+        runSearch()
     }
 
     // MARK: Switching

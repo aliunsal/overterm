@@ -32,6 +32,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The host's own completion, asked first as you type (Notes' `[[`):
     /// the text and the caret in, a list or nil out.
     var completionSource: ((NSString, Int) -> HostCompletion?)?
+    /// ⌘-click at a character, before go-to-definition: true when the host
+    /// took it (a note's link).
+    var onCommandClick: ((Int) -> Bool)?
+    /// ⌘V: the text to insert instead of the pasteboard's, or nil for an
+    /// ordinary paste (Notes saves a pasted image, inserts its embed).
+    var onPaste: ((NSPasteboard) -> String?)?
     /// What the editor shows changed: another file, none, the same one
     /// reloaded.
     var onShowing: ((EditorBuffer?) -> Void)?

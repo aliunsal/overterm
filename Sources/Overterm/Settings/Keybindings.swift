@@ -302,6 +302,8 @@ enum KeyCommands {
         // Ghostty's new_window, which the app doesn't handle: ⌘N did nothing.
         .init("notes.new", "New Note", group: "Panels", key: "cmd+n"),
         .init("notes.open", "Open Note…", group: "Panels", key: "cmd+o"),
+        // ⌥⌘D is the changes pane's: the palette and the menu, no key.
+        .init("notes.daily", "Open Today's Note", group: "Panels"),
         .init("usage.show", "Usage", group: "Panels", key: "alt+cmd+u"),
         .init("search.terminal", "Search Terminal & Files", group: "Panels", ghostty: "start_search", menu: false),
         // Editing

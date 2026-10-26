@@ -1048,6 +1048,18 @@ notes stay portable.
   ⌘O finds a note by name or makes one. Renaming a note — or a folder —
   rewrites every link to what moved, in notes open with edits as an undoable
   edit to the editor's text, else in the file.
+- **Search, tags, daily notes, images**: the sidebar is the tree, a
+  search or the tags. The search (`NoteSearch`, pure) is over the index's
+  text — every term, "a phrase", `#tag` (and the tags under it), case and
+  accents aside, the dotless ı folded to i first. Today's Note is the
+  vault's `dailyFolder`/`dailyFormat`, made once, from
+  `<templates>/Daily.md` if there is one. An image pasted into a note (a
+  screenshot, an image file copied in Finder) goes to the vault's
+  attachments as "Pasted image …", embedded where the caret was; the
+  preview draws `![[…]]` images in place. ⌘-click on a link in the editor
+  follows it. What the page writes itself — a note made, saved, an image —
+  is in the index at once (`NoteIndex.written`): a pass is a second or two
+  behind, and a link to a note just made must resolve.
 - **Live**: a note changed elsewhere (another device, an agent) reloads
   in the editor unless it has edits.
 - **Session**: `session.json`'s `notes` — the page in the strip or not,

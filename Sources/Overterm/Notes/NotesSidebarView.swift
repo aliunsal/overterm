@@ -13,6 +13,17 @@ struct NotesSidebarActions {
     var addVault: () -> Void
     var createDefaultVault: () -> Void
     var removeVault: (Vault) -> Void
+    /// A note at a place in it (a search hit).
+    var openAt: (String, NSRange) -> Void = { _, _ in }
+}
+
+/// What the sidebar shows — the tree, a search, the tags — and the search.
+@MainActor
+final class NotesSidebarState: ObservableObject {
+    enum Mode: String { case files, search, tags }
+    @Published var mode: Mode = .files
+    @Published var query = ""
+    @Published var results: [NoteSearch.Result] = []
 }
 
 /// The vault switcher at the top, the vault's tree under it: notes by
@@ -24,6 +35,7 @@ struct NotesSidebarView: View {
     @ObservedObject var theme: ChromeTheme
     /// The note in the editor, to show it selected.
     @ObservedObject var showing: NotesShowing
+    @ObservedObject var state: NotesSidebarState
     let actions: NotesSidebarActions
 
     var body: some View {
@@ -37,8 +49,13 @@ struct NotesSidebarView: View {
             .padding(.leading, 8)
             .padding(.trailing, 8)
             .frame(height: 34)
+            modes
             if let index = workspace.index {
-                NotesTreeList(tree: tree, index: index, theme: theme, showing: showing, actions: actions)
+                switch state.mode {
+                case .files: NotesTreeList(tree: tree, index: index, theme: theme, showing: showing, actions: actions)
+                case .search: NotesSearchList(state: state, theme: theme, actions: actions)
+                case .tags: NotesTagList(index: index, state: state, theme: theme)
+                }
             } else {
                 Spacer()
             }
@@ -47,6 +64,33 @@ struct NotesSidebarView: View {
         // The page starts right under the tabs, inside the title bar's
         // safe area: honoured, it pushed the vault's row below the editor's.
         .ignoresSafeArea()
+    }
+
+    private var modes: some View {
+        HStack(spacing: 2) {
+            mode(.files, "folder", "Files")
+            mode(.search, "magnifyingglass", "Search")
+            mode(.tags, "number", "Tags")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 4)
+    }
+
+    private func mode(_ mode: NotesSidebarState.Mode, _ symbol: String, _ title: String) -> some View {
+        Button {
+            state.mode = mode
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 28, height: 22)
+                .foregroundStyle(state.mode == mode ? theme.text : theme.text3)
+                .background(RoundedRectangle(cornerRadius: 5).fill(state.mode == mode ? theme.rowSel : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityIdentifier("notes.mode.\(mode.rawValue)")
     }
 
     private var vaultMenu: some View {
@@ -191,6 +235,93 @@ private struct NotesRowView: View {
         Divider()
         Button("Rename…") { actions.rename(url) }
         Button("Move to Trash…") { actions.trash(url) }
+    }
+}
+
+/// The search: a field, then each note that matches with the lines it
+/// matches on.
+private struct NotesSearchList: View {
+    @ObservedObject var state: NotesSidebarState
+    @ObservedObject var theme: ChromeTheme
+    let actions: NotesSidebarActions
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TextField("Search notes — words, \"a phrase\", #tag", text: $state.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 6).fill(theme.rowHover))
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
+                .focused($focused)
+                .onAppear { focused = true }
+                .accessibilityIdentifier("notes.searchField")
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(state.results, id: \.path) { result in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(verbatim: NoteLinks.name(of: result.path))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(theme.text)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture { actions.openAt(result.path, result.hits.first?.range ?? NSRange(location: 0, length: 0)) }
+                            ForEach(result.hits, id: \.range.location) { hit in
+                                Text(verbatim: hit.context)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(theme.text2)
+                                    .lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { actions.openAt(result.path, hit.range) }
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 3)
+                    }
+                    if !state.query.isEmpty, state.results.isEmpty {
+                        Text("Nothing found").font(.system(size: 11)).foregroundStyle(theme.text3).padding(.horizontal, 12)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}
+
+/// Every tag in the vault and how many notes have it; a click searches it.
+private struct NotesTagList: View {
+    @ObservedObject var index: NoteIndex
+    @ObservedObject var state: NotesSidebarState
+    @ObservedObject var theme: ChromeTheme
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(index.tags, id: \.name) { tag in
+                    HStack {
+                        Text(verbatim: "#" + tag.name).font(.system(size: 12)).foregroundStyle(theme.text2)
+                        Spacer()
+                        Text(verbatim: "\(tag.count)").font(.system(size: 11)).foregroundStyle(theme.text3)
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(height: 24)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        state.query = "#" + tag.name
+                        state.mode = .search
+                    }
+                }
+                if index.tags.isEmpty {
+                    Text("No tags yet — #tag in a note, or tags: in its frontmatter.")
+                        .font(.system(size: 11)).foregroundStyle(theme.text3).padding(12)
+                }
+            }
+            .padding(.vertical, 4)
+        }
     }
 }
 

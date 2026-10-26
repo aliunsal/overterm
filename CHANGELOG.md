@@ -6,6 +6,10 @@ version ([SemVer](https://semver.org)): a commit that changes the app bumps it
 `Scripts/bump-version.sh`, which adds the line here. The commit that brings a
 version is tagged `v<version>`.
 
+## 1.5.0 — 2026-10-27
+
+- notes: search, tags, today's note and pasted images
+
 ## 1.4.0 — 2026-10-27
 
 - notes: links — wikilinks that open, [[ completion, ⌘O, backlinks, and renames that rewrite them

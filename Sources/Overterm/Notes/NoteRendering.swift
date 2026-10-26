@@ -16,6 +16,14 @@ import Foundation
 enum NoteRendering {
     static let noteScheme = "overterm-note"
     static let tagScheme = "overterm-tag"
+    /// `![[shot.png]]`: an image, drawn in place by the preview's host.
+    static let embedScheme = "overterm-embed"
+
+    static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "heic", "webp", "tiff", "bmp", "svg"]
+
+    static func isImage(_ path: String) -> Bool {
+        imageExtensions.contains((path as NSString).pathExtension.lowercased())
+    }
 
     static func markdown(_ text: String, syntax given: NoteSyntax? = nil) -> String {
         let syntax = given ?? NoteSyntax.parse(text)
@@ -23,6 +31,10 @@ enum NoteRendering {
         var edits: [(range: NSRange, text: String)] = []
         if let frontmatter = syntax.frontmatter { edits.append((frontmatter.range, "")) }
         for link in syntax.links where link.style == .wiki {
+            if link.isEmbed, isImage(link.target) {
+                edits.append((link.range, "[\(escape(link.alias ?? link.target))](\(embedScheme):\(encode(link.target)))"))
+                continue
+            }
             edits.append((link.range, "[\(escape(link.alias ?? title(of: link)))](\(url(of: link)))"))
         }
         for tag in syntax.tags {
@@ -66,6 +78,12 @@ enum NoteRendering {
         let target = String(parts[0]).removingPercentEncoding ?? String(parts[0])
         let heading = parts.count > 1 ? String(parts[1]).removingPercentEncoding : nil
         return (target, heading)
+    }
+
+    static func embed(of url: URL) -> String? {
+        guard url.scheme == embedScheme else { return nil }
+        let raw = String(url.absoluteString.dropFirst(embedScheme.count + 1))
+        return raw.removingPercentEncoding ?? raw
     }
 
     static func tag(of url: URL) -> String? {

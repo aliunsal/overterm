@@ -206,16 +206,28 @@ final class NoteIndex: ObservableObject {
         return ns.substring(with: ns.lineRange(for: link.range)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The note at `path` as just saved from here: indexed now, without
-    /// waiting for FSEvents and a read.
-    func noteSaved(_ path: String, text: String) {
-        guard var entry = entries[path] else { return refresh() }
-        entry.text = text
-        entry.syntax = NoteSyntax.parse(text)
+    /// A file just written from here — a note saved or made, an image
+    /// pasted: in the index now, without waiting for FSEvents and a pass
+    /// (a second or two behind). A link to a note just made resolves at once.
+    func written(_ path: String, text: String? = nil) {
+        var entry =
+            entries[path]
+            ?? NoteEntry(path: path, size: 0, modified: Date(), cloud: .local, syntax: nil, text: nil)
+        if let values = try? url(for: path).resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) {
+            entry.size = values.fileSize ?? entry.size
+            entry.modified = values.contentModificationDate ?? entry.modified
+        }
+        if let text, entry.isNote {
+            entry.text = text
+            entry.syntax = NoteSyntax.parse(text)
+            entry.isRead = true
+        }
         entries[path] = entry
         cache = nil
         refresh()
     }
+
+    func noteSaved(_ path: String, text: String) { written(path, text: text) }
 
     func url(for path: String) -> URL { root.appendingPathComponent(path) }
 

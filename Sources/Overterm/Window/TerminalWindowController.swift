@@ -2653,6 +2653,14 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
             PaletteItem(id: "a.notes", group: .action, title: "Notes", subtitle: "Markdown notes, synced through iCloud Drive  ⌥⌘N", symbol: "note.text") {
                 [weak self] _, _ in self?.showOverlay(.notes)
             },
+            PaletteItem(id: "a.dailyNote", group: .action, title: "Today's Note", subtitle: "The vault's daily note, made if it isn't there", symbol: "calendar") {
+                [weak self] _, _ in self?.openTodaysNote(nil)
+            },
+            PaletteItem(id: "a.searchNotes", group: .action, title: "Search Notes", subtitle: "Words, \"a phrase\", #tag", symbol: "magnifyingglass") {
+                [weak self] _, _ in
+                self?.showOverlay(.notes)
+                self?.notes?.showSearch()
+            },
             PaletteItem(id: "a.snippet", group: .action, title: "New Snippet…", subtitle: nil, symbol: "text.badge.plus") { [weak self] _, _ in
                 self?.editSnippet(nil)
             },
@@ -3356,6 +3364,10 @@ extension TerminalWindowController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(newNote(_:)) || menuItem.action == #selector(openNoteSwitcher(_:)) {
             return store.showingOverlay == .notes && notesWorkspace.vault != nil
+        }
+        // From anywhere: it opens the page.
+        if menuItem.action == #selector(openTodaysNote(_:)) {
+            return notesWorkspace.vault != nil || notesWorkspace.vaults.current != nil
         }
         if menuItem.action == #selector(toggleTabPeek(_:)) {
             menuItem.state = peek.isOpen ? .on : .off

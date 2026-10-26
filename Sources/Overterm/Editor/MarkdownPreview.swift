@@ -276,6 +276,8 @@ final class MarkdownPreviewView: NSScrollView, NSTextViewDelegate {
     /// Asked first about every link clicked: true when the host took it
     /// (Notes' `overterm-note:` and `overterm-tag:`).
     var onLink: ((URL) -> Bool)?
+    /// The image a link stands for, drawn in its place (Notes' `![[shot.png]]`).
+    var image: ((URL) -> NSImage?)?
     var baseURL: URL?
 
     init(theme: EditorTheme) {
@@ -318,9 +320,29 @@ final class MarkdownPreviewView: NSScrollView, NSTextViewDelegate {
     func show(_ markdown: String) {
         lastMarkdown = markdown
         let origin = contentView.bounds.origin
-        textView.textStorage?.setAttributedString(MarkdownRenderer.render(markdown, theme: theme))
+        let rendered = NSMutableAttributedString(attributedString: MarkdownRenderer.render(markdown, theme: theme))
+        if let image { Self.embedImages(in: rendered, image: image, width: max(200, bounds.width - 80)) }
+        textView.textStorage?.setAttributedString(rendered)
         contentView.scroll(to: origin)
         reflectScrolledClipView(contentView)
+    }
+
+    /// Each link `image` has a picture for, replaced by the picture — no
+    /// wider than `width`.
+    static func embedImages(in text: NSMutableAttributedString, image: (URL) -> NSImage?, width: CGFloat) {
+        var found: [(NSRange, NSImage)] = []
+        text.enumerateAttribute(.link, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            let url = (value as? URL) ?? (value as? String).flatMap { URL(string: $0) }
+            if let url, let picture = image(url) { found.append((range, picture)) }
+        }
+        for (range, picture) in found.reversed() {
+            let attachment = NSTextAttachment()
+            attachment.image = picture
+            let size = picture.size
+            let scale = size.width > width ? width / size.width : 1
+            attachment.bounds = CGRect(x: 0, y: 0, width: size.width * scale, height: size.height * scale)
+            text.replaceCharacters(in: range, with: NSAttributedString(attachment: attachment))
+        }
     }
 
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {

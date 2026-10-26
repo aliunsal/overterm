@@ -208,9 +208,17 @@ extension EditorViewController: CodeTextViewHost {
     }
 
     func codeTextView(_ view: CodeTextView, commandClickAt index: Int) -> Bool {
+        if let onCommandClick, onCommandClick(index) { return true }
         guard let buffer = active, server(for: buffer) != nil else { return false }
         textView.setSelectedRange(NSRange(location: index, length: 0))
         goToDefinition(at: index)
+        return true
+    }
+
+    func codeTextView(_ view: CodeTextView, paste pasteboard: NSPasteboard) -> Bool {
+        guard let onPaste, active != nil, let text = onPaste(pasteboard) else { return false }
+        // A replacement range of its own: a paste, not typing (no pairs).
+        textView.insertText(text, replacementRange: textView.selectedRange())
         return true
     }
 

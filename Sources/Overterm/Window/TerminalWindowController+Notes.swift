@@ -52,6 +52,19 @@ extension TerminalWindowController {
         notes?.showSwitcher()
     }
 
+    /// Today's note, made if it isn't there — from anywhere: Notes opens.
+    @objc func openTodaysNote(_ sender: Any?) {
+        showOverlay(.notes)
+        guard notesWorkspace.vault != nil else { return }
+        do {
+            let url = try notesWorkspace.dailyNote()
+            notesWorkspace.tree.reload()
+            notes?.openFile(url)
+        } catch {
+            showNotesError("Couldn't make today's note.", error)
+        }
+    }
+
     var notesSessionState: NotesState? {
         let isOpen = store.openOverlays.contains(.notes)
         guard isOpen || notesWorkspace.vault != nil else { return nil }

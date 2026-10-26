@@ -134,8 +134,58 @@ final class NotesWorkspace: ObservableObject {
         let url = folder.appendingPathComponent(file)
         guard !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteFileExists) }
         try files.writeText("", to: url)
-        index?.refresh()
+        if let path = path(for: url) { index?.written(path, text: "") }
         return url
+    }
+
+    /// The day's note, made if it isn't there yet: from the vault's
+    /// `<templates>/Daily.md` when it has one (`{{date}}` and `{{title}}`
+    /// filled in), else with the date as its heading.
+    func dailyNote(for date: Date = Date()) throws -> URL {
+        guard let root else { throw CocoaError(.fileNoSuchFile) }
+        let path = config.dailyNote(for: date)
+        let url = root.appendingPathComponent(path)
+        if FileManager.default.fileExists(atPath: url.path) || NotesViewController.placeholderExists(for: url) { return url }
+        let title = NoteLinks.name(of: path)
+        let template = root.appendingPathComponent(VaultConfig.folder(config.templatesFolder)).appendingPathComponent("Daily.md")
+        let text =
+            FileManager.default.fileExists(atPath: template.path)
+            ? Self.fill((try? files.readText(template)) ?? "", title: title, date: date)
+            : "# \(title)\n\n"
+        try files.writeText(text, to: url)
+        index?.written(path, text: text)
+        return url
+    }
+
+    /// A template's `{{title}}`, `{{date}}` and `{{time}}`, as Obsidian's
+    /// core Templates plugin fills them.
+    static func fill(_ template: String, title: String, date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = formatter.string(from: date)
+        formatter.dateFormat = "HH:mm"
+        let time = formatter.string(from: date)
+        return template.replacingOccurrences(of: "{{title}}", with: title).replacingOccurrences(of: "{{date}}", with: day)
+            .replacingOccurrences(of: "{{time}}", with: time)
+    }
+
+    /// An image (pasted, dropped) kept in the vault's attachments folder —
+    /// "Pasted image 20261027013000.png", Obsidian's name — through iCloud.
+    /// Its path in the vault.
+    func saveAttachment(_ data: Data, ext: String, named name: String? = nil, date: Date = Date()) throws -> String {
+        guard let root else { throw CocoaError(.fileNoSuchFile) }
+        let folderPath = VaultConfig.folder(config.attachmentsFolder)
+        let folder = folderPath.isEmpty ? root : root.appendingPathComponent(folderPath, isDirectory: true)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        let base = name ?? "Pasted image \(formatter.string(from: date))"
+        let file = Self.freeName(base, ext: ext, in: folder)
+        try files.write(data, to: folder.appendingPathComponent(file))
+        let path = NoteLinks.join(folderPath, file)
+        index?.written(path)
+        return path
     }
 
     /// What is open in the vault showing, as the page has it now.

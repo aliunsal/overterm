@@ -3904,6 +3904,9 @@ final class E2ERunner {
             "a link to a note not written yet makes it",
             await eventually(3) { editor.active?.url?.lastPathComponent == "Someday.md" }
                 && FileManager.default.fileExists(atPath: root.appendingPathComponent("Someday.md").path))
+        check(
+            "…indexed at once, so a link to it resolves before the next pass",
+            index.links.resolve("Someday", style: .wiki, from: "Links.md") == "Someday.md")
         _ = notes.followLink(URL(string: "overterm-tag:idea")!)
         check("a tag clicked lists its notes", editor.picker?.identifier?.rawValue == "notesTagged")
         editor.picker?.dismiss()
@@ -3931,6 +3934,51 @@ final class E2ERunner {
             "…and its links follow, in the note open with edits",
             editor.textView.string.contains("[[Master Plan#Plan|the plan]]") && editor.textView.string.hasSuffix("[[Master Plan]]"),
             editor.textView.string)
+        editor.saveDocument(nil)
+
+        // ⌘-click on a link in the editor follows it.
+        let someday = (editor.textView.string as NSString).range(of: "[[Someday]]")
+        check("⌘-click on a link follows it", notes.followLink(at: someday.location + 3))
+        check(
+            "…to its note", await eventually(3) { editor.active?.url?.lastPathComponent == "Someday.md" },
+            "showing \(editor.active?.url?.lastPathComponent ?? "-")")
+
+        // Search and tags.
+        notes.showSearch()
+        notes.sidebarState.query = "rewritten IPHONE"
+        check(
+            "the search finds a note by its words, case aside", await eventually(3) { notes.sidebarState.results.map(\.path) == ["Inbox.md"] },
+            "\(notes.sidebarState.results.map(\.path))")
+        check("…with the line it is on", notes.sidebarState.results.first?.hits.first?.context.contains("Rewritten on the iPhone") == true)
+        check("the tags are listed", index.tags.contains { $0.name == "idea" }, "\(index.tags.map(\.name))")
+        notes.sidebarState.query = "#idea"
+        check("…and a tag searches its notes", await eventually(3) { notes.sidebarState.results.map(\.path) == ["Links.md"] })
+
+        // Today's note.
+        app.openTodaysNote(nil)
+        let daily = app.notesWorkspace.config.dailyNote(for: Date())
+        check("Today's Note makes and opens it", await eventually(3) { editor.active?.url.flatMap(app.notesWorkspace.path(for:)) == daily }, daily)
+
+        // An image pasted (from a pasteboard of the scenario's own, not the user's).
+        let image = NSImage(size: NSSize(width: 24, height: 16), flipped: false) { rect in
+            NSColor.systemOrange.setFill()
+            rect.fill()
+            return true
+        }
+        let board = NSPasteboard(name: NSPasteboard.Name("overterm-e2e-notes"))
+        board.clearContents()
+        if let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            board.setData(png, forType: .png)
+        }
+        check("an image pasted is taken", editor.codeTextView(editor.textView, paste: board))
+        board.releaseGlobally()
+        let pasted = editor.textView.string
+        check("…embedded where the caret was", pasted.contains("![[Pasted image "), pasted)
+        let attachments = (try? FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent("attachments").path)) ?? []
+        check("…kept in the vault's attachments", attachments.contains { $0.hasPrefix("Pasted image ") && $0.hasSuffix(".png") }, "\(attachments)")
+        check(
+            "…and drawn in the preview", await eventually(3) { notes.preview.renderedText.string.contains("\u{FFFC}") },
+            notes.preview.renderedText.string)
         editor.saveDocument(nil)
     }
 

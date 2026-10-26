@@ -107,6 +107,19 @@ final class NoteIndexTests: XCTestCase {
         XCTAssertEqual(index.tags.map(\.name), ["a", "b", "c"])
     }
 
+    func testAFileWrittenHereIsIndexedBeforeAnyPass() async throws {
+        try write("A.md", "[[New]]")
+        let index = await index()
+        try write("New.md", "fresh #tag")
+        index.written("New.md", text: "fresh #tag")
+        XCTAssertEqual(index.resolve(NoteSyntax.parse("[[New]]").links[0], from: "A.md"), "New.md", "no pass has run since")
+        XCTAssertEqual(index.tags.map(\.name), ["tag"])
+        try write("shot.png", "png")
+        index.written("shot.png")
+        XCTAssertNotNil(index.entries["shot.png"])
+        XCTAssertNil(index.entries["shot.png"]?.syntax, "not a note: listed, not read")
+    }
+
     func testASavedNoteIsIndexedAtOnceAndRenamesPlanTheirEdits() async throws {
         try write("A.md", "[[B]]")
         try write("B.md", "b")

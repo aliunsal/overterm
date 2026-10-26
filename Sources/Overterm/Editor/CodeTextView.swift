@@ -18,6 +18,9 @@ protocol CodeTextViewHost: AnyObject {
     /// The mouse rested on `index` (nil: it left the text).
     func codeTextView(_ view: CodeTextView, hoverAt index: Int?)
     func codeTextViewContextMenu(_ view: CodeTextView, for menu: NSMenu) -> NSMenu
+    /// ⌘V, before the text view reads the pasteboard: true when taken (an
+    /// image pasted into a note).
+    func codeTextView(_ view: CodeTextView, paste pasteboard: NSPasteboard) -> Bool
 }
 
 /// A problem a language server reported, as the text view draws it.
@@ -311,6 +314,11 @@ final class CodeTextView: NSTextView {
             return
         }
         super.insertText(string, replacementRange: replacementRange)
+    }
+
+    override func paste(_ sender: Any?) {
+        if host?.codeTextView(self, paste: .general) == true { return }
+        super.paste(sender)
     }
 
     override func insertNewline(_ sender: Any?) {
