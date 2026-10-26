@@ -257,6 +257,47 @@ bugün de etkileyen bir hata; ayrı bir commit'te düzeltilir, bir check ile.
 gösteriyor ama düzenleyemiyor. iPhone'da düzenlemek için dosyayı yerinde
 açan bir metin editörü gerekiyor (iA Writer, Runestone, Textastic gibi).
 
+## 6. Durum (2026-10-27)
+
+Adımların hepsi `notes` dalında; her biri kendi commit'inde, testleriyle.
+
+| # | Commit | Sürüm |
+|---|---|---|
+| — | `build: GhosttyKit builds with Xcode 26` (bu Mac'te derlemek için) | 1.2.1 |
+| — | `editor: the Vim engine builds with Swift 6.3` (aynı sebep) | 1.2.2 |
+| 1 | `window: overlays take turns` | 1.2.3 |
+| 2 | `notes: note syntax` | 1.2.4 |
+| 3 | `notes: vault files` | 1.2.5 |
+| 4 | `notes: the index` | 1.2.6 |
+| — | `agents: a pane made at launch gets the MCP config` (spike'ın 5. sorusu) | 1.2.7 |
+| 5 | `editor: a host other than the window` | 1.2.8 |
+| 6 | `notes: a workspace for notes` | 1.3.0 |
+| 7 | `notes: links` | 1.4.0 |
+| 8 | `notes: search, tags, daily notes, attachments` | 1.5.0 |
+| 9 | `notes: conflicts` | 1.6.0 |
+| 10 | `notes: agents` | 1.7.0 |
+
+Plandan sapmalar:
+
+- **⇧⌘L yerine ⌥⌘L.** ⇧⌘L editörde "Select All Matches"; ⌥⌘L Ghostty'de de
+  boş.
+- **9. adım MINOR.** Kullanıcının gördüğü bir özellik (CLAUDE.md, Versioning).
+- **Settings bölümü yok.** Uygulama düzeyinde tek ayar `agents.notesControl`
+  (Settings ▸ Agents); vault'un ayarları `.overterm/notes.json`'da, elle.
+- **`[[` tamamlama 7. adımda.** Editör kancası (`completionSource`) onu
+  kullanan adımla geldi.
+- **Önizleme tek satır sonunu satır sonu sayar,** Obsidian'ın varsayılanı gibi.
+
+Açık kalanlar:
+
+- **Spike 2 ve 3 (iPhone).** Başka bir cihazdan düzenleme ve çakışma gerçek
+  iCloud'la denenmedi; testler `SimulatedCloudFiles` ile. Çakışmanın
+  `NSFileVersion` biçimi ele alınıyor, "Not 2.md" kopyası alınmıyor.
+- **Codex.** `-c mcp_servers…` override'ları belgelere göre; bir Codex
+  ikilisiyle denenmedi (bu Mac'te yok).
+- **2. aşama** (analysis.md, 4): live preview, gömülü notlar, callout ve
+  vurgu çizimi, özellikler arayüzü, başlık ağacı, şablonlar, graf.
+
 ## 5. Kararlar (2026-10-26)
 
 1. **Codex de MCP alır,** MVP'de: üç araç grubu birden (tarayıcı, API,
