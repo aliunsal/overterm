@@ -252,3 +252,11 @@ adımın senaryosu.
    yeniden kurulur.
 4. **Ajanların yazmaları:** `docker.agentWrites` varsayılan açık; her eylem
    yine pencerede sorulur.
+
+## 6. Notlar
+
+- **`performance` senaryosu (2026-10-28):** "changes in folders never opened" kontrolü
+  bu Mac'te %10 sınırının çevresinde gidip geliyor. Base (`97f7a43`), `e46c007`
+  ve `docker` HEAD'i sırayla üçer kez koşturuldu: ortalamalar %10.05, %9.57,
+  %9.32. Dal bir gerileme getirmiyor; tam E2E koşularındaki başarısızlıklar
+  makinenin yükü.
