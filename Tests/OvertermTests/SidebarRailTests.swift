@@ -30,10 +30,11 @@ final class SidebarRailTests: XCTestCase {
         XCTAssertFalse(symbols.contains(where: \.isEmpty))
     }
 
-    /// The foot of the rail: Settings, then the button that puts the
-    /// sidebar away — the ✕ the old icon bar had.
+    /// The foot of the rail: the Notes page, Settings, then the button that
+    /// puts the sidebar away — the ✕ the old icon bar had.
     func testTheFootOfTheRail() {
-        XCTAssertEqual(SidebarRailAction.allCases, [.settings, .hide])
+        XCTAssertEqual(SidebarRailAction.allCases, [.notes, .settings, .hide])
+        XCTAssertEqual(SidebarRailAction.notes.help, "Notes (⌥⌘N)")
         XCTAssertEqual(SidebarRailAction.settings.help, "Settings (⌘,)")
         XCTAssertEqual(SidebarRailAction.hide.help, "Hide Sidebar (⌘B)")
     }

@@ -348,6 +348,7 @@ final class TerminalWindowController: NSWindowController, NSWindowDelegate {
                     rename: { [weak self] item, name in try self?.renameAPIItem(item, to: name) ?? item.url },
                     trash: { [weak self] item in self?.trashItem(item.url) }
                 ),
+                onNotes: { [weak self] in self?.showOverlay(.notes) },
                 onSettings: { [weak self] in self?.openSettings() },
                 onClose: { [weak self] in self?.toggleFileTree(nil) }
             ))

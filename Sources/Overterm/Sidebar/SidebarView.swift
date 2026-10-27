@@ -139,13 +139,14 @@ struct SidebarView: View {
     let snippetActions: SnippetActions
     let sessionActions: SessionActions
     let apiActions: APIActions
-    /// The gear at the foot of the rail.
+    /// The foot of the rail: the Notes page, the gear.
+    let onNotes: () -> Void
     let onSettings: () -> Void
     let onClose: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarRail(sidebar: sidebar, theme: theme, onSettings: onSettings, onClose: onClose)
+            SidebarRail(sidebar: sidebar, theme: theme, onNotes: onNotes, onSettings: onSettings, onClose: onClose)
             VStack(spacing: 0) {
                 switch sidebar.panel {
                 case .files: files

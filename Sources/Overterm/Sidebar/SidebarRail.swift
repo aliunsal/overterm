@@ -6,6 +6,9 @@ import SwiftUI
 /// A type rather than two buttons written into the view, so what sits at
 /// the foot of the rail can be read (and checked) without drawing it.
 enum SidebarRailAction: String, CaseIterable, Identifiable {
+    /// The Notes page — a page over the body like Settings, not a panel:
+    /// without it here, nothing in the rail said the notes were there.
+    case notes
     /// The Settings tab, where VS Code keeps its gear.
     case settings
     /// Put the sidebar away — what the ✕ in the old icon bar did.
@@ -15,6 +18,7 @@ enum SidebarRailAction: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .notes: "note.text"
         case .settings: "gearshape"
         case .hide: "sidebar.leading"
         }
@@ -22,6 +26,7 @@ enum SidebarRailAction: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .notes: "Notes"
         case .settings: "Settings"
         case .hide: "Hide Sidebar"
         }
@@ -30,6 +35,7 @@ enum SidebarRailAction: String, CaseIterable, Identifiable {
     /// The key that does the same thing, for the tooltip.
     var shortcut: String {
         switch self {
+        case .notes: "⌥⌘N"
         case .settings: "⌘,"
         case .hide: "⌘B"
         }
@@ -60,6 +66,7 @@ struct SidebarRail: View {
 
     @ObservedObject var sidebar: SidebarModel
     @ObservedObject var theme: ChromeTheme
+    let onNotes: () -> Void
     let onSettings: () -> Void
     let onClose: () -> Void
 
@@ -76,6 +83,7 @@ struct SidebarRail: View {
             ForEach(SidebarRailAction.allCases) { action in
                 RailButton(selected: false, help: action.help, theme: theme) {
                     switch action {
+                    case .notes: onNotes()
                     case .settings: onSettings()
                     case .hide: onClose()
                     }
