@@ -141,9 +141,12 @@ kalır.
 | 1 | `window: pages take turns` | `WorkspaceOverlay`; Settings aynen | PATCH | `settings` E2E değişmeden |
 | 2 | `docker: the engine` | `DockerEndpoint`, `DockerEngine`, `DockerAPI` modelleri, saf yardımcıların motora ait olanları (çerçeveler, tar, istatistik, portlar) | PATCH | Birim; sahte motorla |
 | 3 | `docker: the model` | `DockerModel`, olaylar, `ComposeProjects`, `DockerRuntime`, `DockerCLI` | PATCH | Birim; sahte motorla |
-| 4 | `docker: containers and compose` | Sayfa ve panel; konteynerler ve projeler; eylemler; ayrıntı (Logs, Inspect, Files, Stats, Mounts); `exec`/`logs -f`/compose tab'ları; `DockerKeys`, `DockerFilter`, ⇧⌥⌘P, palet; motor çubuğu; Settings ▸ Docker | MINOR | `docker` E2E (sahte motor) |
+| 4 | `docker: containers and compose` | Birkaç commit (aşağıda) | MINOR | `docker` E2E (sahte motor) |
+| 4a | `docker: the page` | Sayfa (⌥⌘P), konteynerler ve projeler, eylemler; ayrıntı: Overview, Logs (takip), Inspect (sırlar gizli), Stats; `DockerKey`, `DockerFilter`, `DockerCommands`; motor kartı; Settings ▸ Docker | MINOR | Birim ve `docker` E2E |
+| 4c | `docker: the rail panel` | Checkout'un stack'i rail'de, ayrıntısı sağ slotta | MINOR | `docker` E2E |
+| 4d | `docker: the switcher` | ⇧⌥⌘P, palet, `exec` tab'ının türü (`TabKind`) | MINOR | Birim ve E2E |
 | 5 | `docker: images, volumes, networks` | Listeler ve ayrıntılar; pull (ilerlemeyle), tag, delete; volume'u gezme; ağlar; önizlemeli prune'lar | MINOR | Birim ve `docker` E2E |
-| 6 | `docker: around the terminal` | Portlar panel başlığında ve tarayıcıda; dikkat işaretleri; Database'e geçiş; konteyner dosyasını editörde düzenleme | MINOR | Birim ve E2E |
+| 6 | `docker: around the terminal` | Portlar panel başlığında ve tarayıcıda; dikkat işaretleri; Database'e geçiş; Files sekmesi (klasör listesi `exec` ister: `archive` bir klasörün bütün ağacını döndürür) ve konteyner dosyasını editörde düzenleme | MINOR | Birim ve E2E |
 | 7 | `docker: agents` | `DockerMCP`: okuma ve onaylı eylemler | MINOR | `DockerMCPTests`, gerçek HTTP ile E2E |
 | 8 | `docker: management` | 2. aşama: disk ve temizlik görünümü, `daemon.json`, compose'un çözülmüş modeli ve editörde compose, worktree çakışmaları, Run penceresi, Docker Debug karşılığı, `top`/`changes`/`export`, Tab Info, OpenAPI araması | MINOR (birkaç commit) | Her biri kendi testiyle |
 | 9 | `docker: …` | 3. aşama: build geçmişi, Scout, Hub, volume dışa/içe aktarma, Model Runner, MCP Toolkit, güncellemeler ve tanılama, Kubernetes durumu, uzak context'ler, Podman ve Rancher | MINOR (eklenti başına bir commit) | Eklentinin JSON örnekleriyle |
