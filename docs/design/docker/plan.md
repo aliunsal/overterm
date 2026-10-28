@@ -260,3 +260,23 @@ adımın senaryosu.
   ve `docker` HEAD'i sırayla üçer kez koşturuldu: ortalamalar %10.05, %9.57,
   %9.32. Dal bir gerileme getirmiyor; tam E2E koşularındaki başarısızlıklar
   makinenin yükü.
+- **3. aşamanın durumu (2026-10-28):** Satır 9'daki her şey yerelde bitti,
+  her biri kendi commit'inde ve testinde:
+  - build geçmişi (`docker: builds`), Hub araması, volume dışa/içe aktarma;
+  - güncellemeler, tanılama ve Kubernetes durumu: runtime'ın kendi
+    komutları, terminal tab'ında (`docker: the runtime's own commands`);
+  - uzak context'ler: `ssh://` motorun socket'i sistemin ssh'ıyla buraya
+    yönlendirilir; testler 127.0.0.1'de geçici bir sshd'yle (`FakeSSHHost`);
+  - Model Runner: CLI değil, runner'ın kendi API'si — Docker Engine'de
+    (OrbStack, Colima) `docker model list` bile runner'ı kuruyor (imaj,
+    konteyner, volume);
+  - MCP Toolkit: Claude Code ve Codex'in gateway'e bağlı olup olmadığı;
+    bağlama ve ayırma terminal tab'ında (ajanın kendi config'ini yazıyor);
+  - Scout: imajın menüsünden, terminal tab'ında — imajın paketlerini
+    Docker'ın servisine gönderdiği için yalnızca istenince;
+  - Rancher Desktop `rdctl` ile; Podman aynı API'yi konuşuyor.
+- **Bilerek bırakılanlar:** Scout'un CVE'leri için yerel bir görünüm (SARIF
+  örneği kullanıcının hesabıyla bir ağ isteği gerektiriyor; şimdilik
+  terminal), MCP Toolkit'in sunucu ve profil yönetimi (CLI'ı değişiyor:
+  `server` artık yalnızca `init`), modeli bellekten indirme (`unload`),
+  uzak motorun Model Runner'ı.
